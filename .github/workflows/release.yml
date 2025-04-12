@@ -27,7 +27,7 @@ env:
   # See: https://github.com/wenkokke/manylinux_ghc
   DEFAULT_GHC_VERSION: "9.4.8"
   DEFAULT_CABAL_VERSION: "3.10.2.1"
-  DEFAULT_PYTHON_VERSION: "3.11"
+  DEFAULT_PYTHON_VERSION: "3.13.3"
 
 jobs:
   ################################################################################
