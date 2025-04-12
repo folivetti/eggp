@@ -25,8 +25,8 @@ env:
   # you must update the containers in pyproject.toml under tool.cibuildwheel.
   #
   # See: https://github.com/wenkokke/manylinux_ghc
-  DEFAULT_GHC_VERSION: "9.12.1"
-  DEFAULT_CABAL_VERSION: "3.14.1.1"
+  DEFAULT_GHC_VERSION: "9.12"
+  DEFAULT_CABAL_VERSION: "3.14"
   DEFAULT_PYTHON_VERSION: "3.13.3"
 
 jobs:
@@ -107,7 +107,7 @@ jobs:
 
       - # 12-02-2024:
         # Print the GHC architecture.
-        if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
+        #if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
         run: echo "::debug::$(ghc --info)"
 
       - # 19-06-2023:
