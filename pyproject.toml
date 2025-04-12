@@ -76,10 +76,10 @@ skip = [
   # PyPy builds do not work.
   "pp*",
 ]
-manylinux-aarch64-image = "wenkokke/manylinux_2_28_ghc948_aarch64"
-manylinux-i686-image = "wenkokke/manylinux2014_ghc948_i686"
-manylinux-x86_64-image = "wenkokke/manylinux2014_ghc948_x86_64"
-musllinux-x86_64-image = "wenkokke/musllinux_1_1_ghc948_x86_64"
+manylinux-aarch64-image = "folivetti/manylinux_2_28_ghc9121_aarch64"
+manylinux-i686-image = "folivetti/manylinux2014_ghc9121_i686"
+manylinux-x86_64-image = "folivetti/manylinux2014_ghc9121_x86_64"
+musllinux-x86_64-image = "folivetti/musllinux_1_1_ghc9121_x86_64"
 
 
 [tool.mypy]
