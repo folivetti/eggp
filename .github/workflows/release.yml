@@ -99,7 +99,7 @@ jobs:
         # Required to build the wheels on macOS and Windows, but not on Linux,
         # as Linux builds are run in containers, where GHC and Cabal are built
         # by the `./scripts/before-all.sh` scripts.
-        #if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
+        if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.DEFAULT_GHC_VERSION }}
@@ -107,7 +107,7 @@ jobs:
 
       - # 12-02-2024:
         # Print the GHC architecture.
-        #if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
+        if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
         run: echo "::debug::$(ghc --info)"
 
       - # 19-06-2023:
