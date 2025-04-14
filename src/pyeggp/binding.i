@@ -10,7 +10,7 @@ int unsafe_hs_pyeggp_main() {
   return hs_pyeggp_main();
 }
 
-char * unsafe_hs_pyeggp_run(const char *dataset, int gens, int nPop, int maxSize, int nTournament, double pc, double pm, const char *nonterminals, const char *loss, int optIter, int optRepeat, int nParams, int split, int simplify, const char *dumpTo, const char *loadFrom ) {
+char * unsafe_hs_pyeggp_run( char *dataset, int gens, int nPop, int maxSize, int nTournament, double pc, double pm,  char *nonterminals,  char *loss, int optIter, int optRepeat, int nParams, int split, int simplify,  char *dumpTo,  char *loadFrom ) {
   return hs_pyeggp_run(dataset, gens, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, simplify, dumpTo, loadFrom);
 }
 
@@ -22,11 +22,11 @@ void unsafe_hs_pyeggp_exit() {
   hs_exit();
 }
 
-void unsafe_py_write_stdout(const char * str) {
+void unsafe_py_write_stdout( char * str) {
   PySys_FormatStdout("%s", str);
 }
 
-void unsafe_py_write_stderr(const char * str) {
+void unsafe_py_write_stderr( char * str) {
   PySys_FormatStderr("%s", str);
 }
 %}
@@ -59,6 +59,6 @@ void unsafe_py_write_stderr(const char * str) {
 
 char * unsafe_hs_pyeggp_version();
 int unsafe_hs_pyeggp_main();
-char * unsafe_hs_pyeggp_run(const char *dataset, int gens, int nPop, int maxSize, int nTournament, double p, double pm, const char *nonterminals, const char *loss, int optIter, int optRepeat, int nParams, int split, int simplify, const char *dumpTo, const char *loadFrom);
+char * unsafe_hs_pyeggp_run( char *dataset, int gens, int nPop, int maxSize, int nTournament, double p, double pm,  char *nonterminals,  char *loss, int optIter, int optRepeat, int nParams, int split, int simplify,  char *dumpTo,  char *loadFrom);
 void unsafe_hs_pyeggp_init(int argc, char **argv);
 void unsafe_hs_pyeggp_exit();
