@@ -27,7 +27,7 @@ env:
   # See: https://github.com/wenkokke/manylinux_ghc
   DEFAULT_GHC_VERSION: "9.12"
   DEFAULT_CABAL_VERSION: "3.14"
-  DEFAULT_PYTHON_VERSION: "3.13.3"
+  DEFAULT_PYTHON_VERSION: "3.12"
 
 jobs:
   ################################################################################
@@ -56,11 +56,11 @@ jobs:
               runner: "ubuntu-latest"
               arch: "x86_64"
               plat: "manylinux"
-          - os:
-              name: "Linux"
-              runner: "ubuntu-latest"
-              arch: "x86_64"
-              plat: "musllinux"
+          #- os:
+          #    name: "Linux"
+          #    runner: "ubuntu-latest"
+          #    arch: "x86_64"
+          #    plat: "musllinux"
           - os:
               name: "macOS"
               runner: "macos-12"
