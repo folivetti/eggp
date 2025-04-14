@@ -87,7 +87,7 @@ class cabal_build_ext(build_ext):
         #self.build_temp = self.build_temp.replace("temp","lib")
         self.mkpath(self.build_temp)
         print(self.build_temp, "<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-        self.cabal(["build"], env={"CABAL_BUILDDIR": self.build_temp, **os.environ})
+        self.cabal(["build"], env={"INSTALLDIR": self.build_temp, **os.environ})
         lib_filename = self.get_cabal_foreign_library_filename(ext)
         ext_fullpath = self.get_ext_fullpath(ext.name)
         self.mkpath(os.path.dirname(ext_fullpath))

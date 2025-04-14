@@ -2,7 +2,8 @@
 
 # Get configuration from Tox
 # 2024-04-16: The substitution for '{env_python}' and other environment variables no longer appears to work.
-python="python"
+# hardcode for now
+python="python3.12"
 package_root="${package_root:-"$(dirname "$( cd -- "$(dirname "$0")" >/dev/null 2>&1 || exit ; pwd -P )" )"}"
 dist_dir="${package_root}/dist"
 dist_tmp_dir="${package_root}/dist/_tmp"
