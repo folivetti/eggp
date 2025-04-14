@@ -52,12 +52,14 @@ import Data.SRTree (convertProtectedOps)
 
 import Util
 
-import Foreign.C (CInt (..))
-import Foreign.C.String (CString, newCString, withCString)
-import Paths_pyeggp_wheel (version)
+import Foreign.C (CInt (..), CDouble (..))
+import Foreign.C.String (CString, newCString, withCString, peekCString, peekCAString, newCAString)
+import Paths_Pyeggp (version)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
 import Text.Read (readMaybe)
+import Data.Version (showVersion)
+import Control.Exception (Exception (..), SomeException (..), handle)
 
 foreign import ccall unsafe_py_write_stdout :: CString -> IO ()
 
@@ -69,13 +71,13 @@ foreign import ccall unsafe_py_write_stderr :: CString -> IO ()
 py_write_stderr :: String -> IO ()
 py_write_stderr str = withCString str unsafe_py_write_stderr
 
-foreign export ccall hs_pyeggp_version :: IO CInt
+foreign export ccall hs_pyeggp_version :: IO CString
 
 hs_pyeggp_version :: IO CString
 hs_pyeggp_version =
   newCString (showVersion version)
 
-foreign export ccall hs_pyeggp_main :: IO CString
+foreign export ccall hs_pyeggp_main :: IO CInt
 
 exitHandler :: ExitCode -> IO CInt
 exitHandler ExitSuccess = return 0
@@ -89,20 +91,26 @@ hs_pyeggp_main :: IO CInt
 hs_pyeggp_main =
   handle uncaughtExceptionHandler $
     handle exitHandler $ do
-      getArgs >>= \args ->
-        case eggp args of
+      getArgs >>= \args -> do
+        --out <- pyeggp args
+        case "" of
           ""  -> py_write_stdout $ "wrong arguments"
           css -> py_write_stdout css
       return 0
 
-foreign export ccall hs_pyeggp :: [CString] -> IO CString
+foreign export ccall hs_pyeggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> IO CString
 
-hs_pyeggp :: [CString] -> IO CString
-hs_pyeggp cargs = do
-  args <- traverse peekCString cargs
-  newCString $ pyeggp args
+hs_pyeggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> IO CString
+hs_pyeggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams split simplify dumpTo loadFrom = do
+  dataset' <- peekCString dataset
+  nonterminals' <- peekCString nonterminals
+  loss' <- peekCString loss
+  dumpTo' <- peekCString dumpTo
+  loadFrom' <- peekCString loadFrom
+  out  <- pyeggp dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral split) (simplify /= 0) dumpTo' loadFrom'
+  newCString out
 
-egraphGP :: [(DataSet, DataSet)] -> Args -> StateT EGraph (StateT StdGen IO) ()
+egraphGP :: [(DataSet, DataSet)] -> Args -> StateT EGraph (StateT StdGen IO) String
 egraphGP dataTrainVals args = do
   when ((not.null) (_loadFrom args)) $ (io $ BS.readFile (_loadFrom args)) >>= \eg -> put (decode eg)
 
@@ -121,18 +129,18 @@ egraphGP dataTrainVals args = do
     let full = totSz > max maxMem (_nPop args)
     when full (cleanEGraph >> cleanDB)
 
-    newPop <- let n_paretos = (_nPop args) `div` (_maxSize args)
-              pareto <- concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
-              let remainder = _nPop args - length pareto
-              lft <- if full
-                        then getTopFitEClassThat remainder (const True)
-                        else pure $ Prelude.take remainder newPop'
-              Prelude.mapM canonical (pareto <> lft)
+    newPop <- do let n_paretos = (_nPop args) `div` (_maxSize args)
+                 pareto <- concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
+                 let remainder = _nPop args - length pareto
+                 lft <- if full
+                           then getTopFitEClassThat remainder (const True)
+                           else pure $ Prelude.take remainder newPop'
+                 Prelude.mapM canonical (pareto <> lft)
     pure newPop
 
-  io $ putStrLn "id,Expression,Numpy,theta,size"
-  paretoFront fitFun (_maxSize args) printExpr
   when ((not.null) (_dumpTo args)) $ get >>= (io . BS.writeFile (_dumpTo args) . encode )
+  pf <- paretoFront fitFun (_maxSize args) printExpr
+  pure $ "id,Expression,Numpy,theta,size\n" <> pf
   where
     maxSize = (_maxSize args)
     maxMem = 2000000 -- running 1 iter of eqsat for each new individual will consume ~3GB
@@ -330,7 +338,7 @@ egraphGP dataTrainVals args = do
                                                                   en' <- canonize (gf ec)
                                                                   doesNotExistGens grands en'
 
-    printExpr :: Int -> EClassId -> RndEGraph ()
+    printExpr :: Int -> EClassId -> RndEGraph String
     printExpr ix ec = do
         thetas' <- gets (_theta . _info . (IM.! ec) . _eClass)
         bestExpr <- (if _simplify args then simplifyEqSatDefault else id) <$> getBestExpr ec
@@ -341,7 +349,7 @@ egraphGP dataTrainVals args = do
                         then fitFun bestExpr
                         else pure (1.0, thetas')
 
-        forM_ (Prelude.zip dataTrainVals thetas) $ \((dataTrain, dataVal), theta) -> do
+        ts <- forM (Prelude.zip dataTrainVals thetas) $ \((dataTrain, dataVal), theta) -> do
             let (x, y, mYErr) = dataTrain
                 (x_val, y_val, mYErr_val) = dataVal
                 distribution = _distribution args
@@ -349,9 +357,10 @@ egraphGP dataTrainVals args = do
                 expr      = paramsToConst (MA.toList theta) best'
                 thetaStr   = intercalate ";" $ Prelude.map show (MA.toList theta)
                 showFun    = showExpr expr
-                showFunNp  = "\"" <> showPython best' <> "\""
-            io . putStrLn $ show ix <> "," <> showFun <> "," <> showFunNp <> ","
-                          <> thetaStr <> "," <> show (countNodes $ convertProtectedOps expr)
+                showFunNp  = showPython best'
+            pure $ show ix <> "," <> showFun <> "," <> showFunNp <> ","
+                    <> thetaStr <> "," <> show (countNodes $ convertProtectedOps expr) <> "\n"
+        pure (concat ts)
     insertTerms =
         forM terms $ \t -> do fromTree myCost t >>= canonical
 
@@ -376,30 +385,15 @@ data Args = Args
   deriving (Show)
 
 
-pyeggp :: String -> String
-pyeggp args =
-  case args of
-    [dataset', gens', maxSize', distribution', optIter', optRepeat', nParams, nTournament, pc, pm, nonterminals, dumpTo, loadFrom, simplify] ->
-            let marg = Args <$> Just dataset
-                            <*> readMaybe gens
-                            <*> readMaybe maxSize
-                            <*> readMaybe distribution
-                            <*> readMaybe optIter
-                            <*> readMaybe optRepeat
-                            <*> readMaybe nParams
-                            <*> readMaybe nTournament
-                            <*> readMaybe pc
-                            <*> readMaybe pm
-                            <*> Just nonterminals
-                            <*> Just dumpTo
-                            <*> Just loadFrom
-            in case marg of
-                    Just arg -> eggp dataset arg
-                    Nothing  -> ""
-  _ -> ""
+pyeggp :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Bool -> String -> String -> IO String
+pyeggp dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams split simplify dumpTo loadFrom =
+  case readMaybe loss of
+       Nothing -> pure $ "Invalid loss function " <> loss
+       Just l -> let arg = Args dataset gens maxSize split l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom simplify
+                 in eggp arg
 
-eggp :: String -> Args -> String
-eggp dataset args = do
+eggp :: Args -> IO String
+eggp args = do
   g    <- getStdGen
   let datasets = words (_dataset args)
   dataTrains' <- Prelude.mapM (flip loadTrainingOnly True) datasets -- load all datasets 

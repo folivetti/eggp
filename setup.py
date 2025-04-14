@@ -11,7 +11,7 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 ext_module = Extension(
-    name="eggp._binding",
+    name="pyeggp._binding",
     sources=["src/pyeggp/binding.i"],
 )
 
@@ -84,8 +84,10 @@ class cabal_build_ext(build_ext):
         )
 
     def cabal_build_ext(self, ext: Extension) -> None:
+        #self.build_temp = self.build_temp.replace("temp","lib")
         self.mkpath(self.build_temp)
-        self.cabal(["build"], env={"INSTALLDIR": self.build_temp, **os.environ})
+        print(self.build_temp, "<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        self.cabal(["build"], env={"CABAL_BUILDDIR": self.build_temp, **os.environ})
         lib_filename = self.get_cabal_foreign_library_filename(ext)
         ext_fullpath = self.get_ext_fullpath(ext.name)
         self.mkpath(os.path.dirname(ext_fullpath))

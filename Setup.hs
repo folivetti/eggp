@@ -11,6 +11,7 @@ import Distribution.Simple.Setup (BuildFlags (..), fromFlagOrDefault)
 import Distribution.Simple.Utils (die', info)
 import Distribution.Types.LocalBuildInfo (componentNameCLBIs)
 import Distribution.Types.UnqualComponentName (UnqualComponentName, unUnqualComponentName)
+import Distribution.Utils.Path (interpretSymbolicPathCWD)
 import Distribution.Verbosity (Verbosity, normal)
 import System.Directory (doesDirectoryExist, copyFile)
 import System.Environment (getEnv)
@@ -34,7 +35,7 @@ main =
               for_ foreignLibCLBIs $ \foreignLibCLBI -> do
                 let foreignLibBuildDir = componentBuildDir localBuildInfo foreignLibCLBI
                 let foreignLibFileName = getForeignLibFileName foreignLibName
-                let foreignLibBuildPath = foreignLibBuildDir </> foreignLibFileName
+                let foreignLibBuildPath = interpretSymbolicPathCWD foreignLibBuildDir </> foreignLibFileName
                 let foreignLibInstallPath = installDir </> foreignLibFileName
                 info verbosity $ "Installing " <> foreignLibFileName <> " to " <> installDir
                 copyFile foreignLibBuildPath foreignLibInstallPath

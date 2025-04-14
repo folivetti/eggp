@@ -235,19 +235,23 @@ printBest fitFun printExprFun = do
       printExprFun 0 bec
 
 --paretoFront :: Int -> (Int -> EClassId -> RndEGraph ()) -> RndEGraph ()
-paretoFront fitFun maxSize printExprFun = go 1 0 (-(1.0/0.0))
+paretoFront fitFun maxSize printExprFun = concat <$> go 1 0 (-(1.0/0.0))
     where
-    go :: Int -> Int -> Double -> RndEGraph ()
+    go :: Int -> Int -> Double -> RndEGraph [String]
     go n ix f
-        | n > maxSize = pure ()
+        | n > maxSize = pure []
         | otherwise   = do
             ecList <- getBestExprWithSize n
             if not (null ecList)
                 then do let (ec, mf) = head ecList
                             improved = fromJust mf > f
                         ec' <- canonical ec
-                        when improved $ refit fitFun ec' >> printExprFun ix ec'
-                        go (n+1) (ix + if improved then 1 else 0) (max f (fromJust mf))
+                        if improved
+                                then do refit fitFun ec'
+                                        t <- printExprFun ix ec'
+                                        ts <- go (n+1) (ix + if improved then 1 else 0) (max f (fromJust mf))
+                                        pure (t:ts)
+                                else go (n+1) (ix + if improved then 1 else 0) (max f (fromJust mf))
                 else go (n+1) ix f
 
 evaluateUnevaluated fitFun = do

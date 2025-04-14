@@ -6,7 +6,7 @@ from typing import Iterator, List
 from ._binding import (
     unsafe_hs_pyeggp_version,
     unsafe_hs_pyeggp_main,
-    unsafe_hs_pyeggp_fib,
+    unsafe_hs_pyeggp_run,
     unsafe_hs_pyeggp_init,
     unsafe_hs_pyeggp_exit,
 )
@@ -45,7 +45,27 @@ def main(args: List[str] = []) -> int:
     with hs_rts_init(args):
         return unsafe_hs_pyeggp_main()
 
-
-def pyegpp(n: List[str]) -> str:
+def pyeggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, simplify: int, dumpTo: str, loadFrom: str) -> str:
     with hs_rts_init():
-        return unsafe_hs_pyeggp(n)
+        return unsafe_hs_pyeggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, simplify, dumpTo, loadFrom)
+
+class PyEGGP():
+    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, split = 1, simplify = False, dumpTo = "", loadFrom = ""):
+        self.gen = gen
+        self.nPop = nPop
+        self.maxSize = maxSize
+        self.nTournament = nTournament
+        self.pc = pc
+        self.pm = pm
+        self.nonterminals = nonterminals
+        self.loss = loss
+        self.optIter = optIter
+        self.optRepeat = optRepeat
+        self.nParams = nParams
+        self.split = split
+        self.simplify = int(simplify)
+        self.dumpTo = dumpTo
+        self.loadFrom = loadFrom
+    def fit(self, dataset):
+        output = pyeggp_run(dataset, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.split, self.simplify, self.dumpTo, self.loadFrom)
+        return output

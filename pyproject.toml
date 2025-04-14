@@ -14,7 +14,7 @@ authors = [{ name = "Fabricio Olivetti", email = "folivetti@users.noreply.github
 description = "Python Wheels for eggp algorithm."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9,<3.13"
+requires-python = ">=3.9,<3.14"
 classifiers = [
   "Operating System :: MacOS",
   "Operating System :: Microsoft :: Windows",
@@ -23,6 +23,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = ["typing_extensions >=4.6,<5; python_version<'3.8'"]
@@ -46,7 +47,7 @@ push = true
   '^version = "{pep440_version}"$',
   '^current_version = "{version}"$',
 ]
-"src/example_haskell_wheel/__init__.py" = [
+"src/pyeggp/__init__.py" = [
   '^VERSION: str = "{pep440_version}"$',
 ]
 "pyeggp.cabal" = ['^version:         {pep440_version}$']
@@ -95,9 +96,9 @@ where = ["src"]
 legacy_tox_ini = """
 [tox]
 min_version = 4
-env_list = py{39,310,311,312}-{lin,mac,win}
+env_list = py{39,310,311,312,313}-{lin,mac,win}
 
-[testenv:py{39,310,311,312}-{lin,mac,win}]
+[testenv:py{39,310,311,312,313}-{lin,mac,win}]
 package = external
 package_env = build-{env_name}
 platform =
@@ -111,7 +112,7 @@ extras =
 commands =
   {env_python} -m pytest {posargs}
 
-[testenv:build-py{39,310,311,312}-{lin,mac,win}]
+[testenv:build-py{39,310,311,312,313}-{lin,mac,win}]
 deps =
   build
   auditwheel; sys_platform == 'linux'
@@ -123,18 +124,21 @@ package_glob =
   py310-lin: {package_root}{/}dist{/}*cp310*manylinux*.whl
   py311-lin: {package_root}{/}dist{/}*cp311*manylinux*.whl
   py312-lin: {package_root}{/}dist{/}*cp312*manylinux*.whl
+  py313-lin: {package_root}{/}dist{/}*cp313*manylinux*.whl
   py37-mac: {package_root}{/}dist{/}*cp37*macosx*.whl
   py38-mac: {package_root}{/}dist{/}*cp38*macosx*.whl
   py39-mac: {package_root}{/}dist{/}*cp39*macosx*.whl
   py310-mac: {package_root}{/}dist{/}*cp310*macosx*.whl
   py311-mac: {package_root}{/}dist{/}*cp311*macosx*.whl
   py312-mac: {package_root}{/}dist{/}*cp312*macosx*.whl
+  py313-mac: {package_root}{/}dist{/}*cp313*macosx*.whl
   py37-win: {package_root}{/}dist{/}*cp37*win*.whl
   py38-win: {package_root}{/}dist{/}*cp38*win*.whl
   py39-win: {package_root}{/}dist{/}*cp39*win*.whl
   py310-win: {package_root}{/}dist{/}*cp310*win*.whl
   py311-win: {package_root}{/}dist{/}*cp311*win*.whl
   py312-win: {package_root}{/}dist{/}*cp312*win*.whl
+  py313-win: {package_root}{/}dist{/}*cp313*win*.whl
 allowlist_externals =
   sh
 commands =
