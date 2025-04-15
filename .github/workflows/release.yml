@@ -61,16 +61,16 @@ jobs:
           #    runner: "ubuntu-latest"
           #    arch: "x86_64"
           #    plat: "musllinux"
-          - os:
-              name: "macOS"
-              runner: "macos-13"
-              arch: "x86_64"
-              plat: "macosx"
           #- os:
           #    name: "macOS"
-          #    runner: "macos-14"
-          #    arch: "arm64"
+          #    runner: "macos-13"
+          #    arch: "x86_64"
           #    plat: "macosx"
+          - os:
+              name: "macOS"
+              runner: "macos-14"
+              arch: "arm64"
+              plat: "macosx"
           #- os:
           #    name: "Windows"
           #    runner: "windows-latest"
