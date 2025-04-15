@@ -116,15 +116,15 @@ jobs:
           git clone https://github.com/microsoft/vcpkg.git
           cd vcpkg
           bootstrap-vcpkg.bat
-          vcpkg install nlopt
+          vcpkg install nlopt:x64-windows
       - if: matrix.job.os.name == 'Windows'
         name: Configure environment variables
         run: |
           echo "LIBRARY_PATH=C:\vcpkg\installed\x64-windows\lib" >> $env:GITHUB_ENV
           echo "CPATH=C:\vcpkg\installed\x64-windows\include" >> $env:GITHUB_ENV
           echo "INCLUDE=C:/nlopt/include" >> $GITHUB_ENV
-          echo "LIB=C:/nlopt/lib" >> $GITHUB_ENV
-          echo "C:/nlopt/bin" >> $GITHUB_PATH
+          echo "PATH=C:\vcpkg\installed\x64-windows\bin${{ env.PATH }}" >> $env:GITHUB_ENV
+
 
       - if: matrix.job.os.name == 'macOS'
         name: Install Homebrew dependencies
