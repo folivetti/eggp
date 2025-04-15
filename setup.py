@@ -91,8 +91,9 @@ class cabal_build_ext(build_ext):
             self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "C:\vcpkg\installed\x64-windows\lib", "CPATH": "C:\vcpkg\installed\x64-windows\include", **os.environ})
         elif sys.platform in ["linux"]:
             self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "/usr/local/lib64", "LD_LIBRARY_PATH":"/usr/local/lib64", "C_INCLUDE_PATH": "/usr/local/include", "PKG_CONFIG_PATH": "/usr/local/lib64/pkgconfig", **os.environ})
-            self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "/usr/local/lib64", "LD_LIBRARY_PATH":"/usr/local/lib64", "C_INCLUDE_PATH": "/usr/local/include", "PKG_CONFIG_PATH": "/usr/local/lib64/pkgconfig", 'MACOSX_DEPLOYMENT_TARGET': '13.0', **os.environ})
+            
         else:
+            self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "/usr/local/lib64", "LD_LIBRARY_PATH":"/usr/local/lib64", "C_INCLUDE_PATH": "/usr/local/include", "PKG_CONFIG_PATH": "/usr/local/lib64/pkgconfig", 'MACOSX_DEPLOYMENT_TARGET': '13.0', **os.environ})
         lib_filename = self.get_cabal_foreign_library_filename(ext)
         ext_fullpath = self.get_ext_fullpath(ext.name)
         self.mkpath(os.path.dirname(ext_fullpath))
