@@ -122,6 +122,9 @@ jobs:
         run: |
           echo "LIBRARY_PATH=C:\vcpkg\installed\x64-windows\lib" >> $env:GITHUB_ENV
           echo "CPATH=C:\vcpkg\installed\x64-windows\include" >> $env:GITHUB_ENV
+          echo "INCLUDE=C:/nlopt/include" >> $GITHUB_ENV
+          echo "LIB=C:/nlopt/lib" >> $GITHUB_ENV
+          echo "C:/nlopt/bin" >> $GITHUB_PATH
 
       - if: matrix.job.os.name == 'macOS'
         name: Install Homebrew dependencies
