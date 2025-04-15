@@ -61,11 +61,11 @@ jobs:
           #    runner: "ubuntu-latest"
           #    arch: "x86_64"
           #    plat: "musllinux"
-          #- os:
-          #    name: "macOS"
-          #    runner: "macos-12"
-          #    arch: "x86_64"
-          #    plat: "macosx"
+          - os:
+              name: "macOS"
+              runner: "macos-12"
+              arch: "x86_64"
+              plat: "macosx"
           #- os:
           #    name: "macOS"
           #    runner: "macos-14"
@@ -109,7 +109,31 @@ jobs:
         # Print the GHC architecture.
         if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
         run: echo "::debug::$(ghc --info)"
+        
+      - if: matrix.job.os.name == 'Windows'
+        name: Install vcpkg
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg install nlopt
+      - if: matrix.job.os.name == 'Windows'
+        name: Configure environment variables
+        run: |
+          echo "LIBRARY_PATH=C:\vcpkg\installed\x64-windows\lib" >> $env:GITHUB_ENV
+          echo "CPATH=C:\vcpkg\installed\x64-windows\include" >> $env:GITHUB_ENV
 
+      - if: matrix.job.os.name == 'macOS'
+        name: Install Homebrew dependencies
+        run: |
+          brew update
+          brew install nlopt
+      - if: matrix.job.os.name == 'macOS'
+        name: Configure environment variables
+        run: |
+          echo "LIBRARY_PATH=/usr/local/lib" >> $GITHUB_ENV
+          echo "CPATH=/usr/local/include" >> $GITHUB_ENV
+          
       - # 19-06-2023:
         # Required to build aarch64 wheels.
         if: matrix.job.os.name == 'Linux' && matrix.job.os.arch == 'aarch64'
