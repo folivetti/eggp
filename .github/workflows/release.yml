@@ -51,11 +51,11 @@ jobs:
           #    runner: "ubuntu-latest"
           #    arch: "i686"
           #    plat: "manylinux"
-          - os:
-              name: "Linux"
-              runner: "ubuntu-latest"
-              arch: "x86_64"
-              plat: "manylinux"
+          #- os:
+          #    name: "Linux"
+          #    runner: "ubuntu-latest"
+          #    arch: "x86_64"
+          #    plat: "manylinux"
           #- os:
           #    name: "Linux"
           #    runner: "ubuntu-latest"
@@ -63,7 +63,7 @@ jobs:
           #    plat: "musllinux"
           - os:
               name: "macOS"
-              runner: "macos-12"
+              runner: "macos-13"
               arch: "x86_64"
               plat: "macosx"
           #- os:
