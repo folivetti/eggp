@@ -133,6 +133,7 @@ jobs:
         run: |
           echo "LIBRARY_PATH=/usr/local/lib" >> $GITHUB_ENV
           echo "CPATH=/usr/local/include" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=13.0" >> $GITHUB_ENV
           
       - # 19-06-2023:
         # Required to build aarch64 wheels.
