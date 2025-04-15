@@ -87,7 +87,10 @@ class cabal_build_ext(build_ext):
         #self.build_temp = self.build_temp.replace("temp","lib")
         self.mkpath(self.build_temp)
         print(self.build_temp, "<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-        self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "/usr/local/lib64", "LD_LIBRARY_PATH":"/usr/local/lib64", "C_INCLUDE_PATH": "/usr/local/include", "PKG_CONFIG_PATH": "/usr/local/lib64/pkgconfig", **os.environ})
+        if sys.platform in ["win32", "cygwin"]:
+            self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "C:\vcpkg\installed\x64-windows\lib", "CPATH": "C:\vcpkg\installed\x64-windows\include", **os.environ})
+        else:
+            self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "/usr/local/lib64", "LD_LIBRARY_PATH":"/usr/local/lib64", "C_INCLUDE_PATH": "/usr/local/include", "PKG_CONFIG_PATH": "/usr/local/lib64/pkgconfig", **os.environ})
         lib_filename = self.get_cabal_foreign_library_filename(ext)
         ext_fullpath = self.get_ext_fullpath(ext.name)
         self.mkpath(os.path.dirname(ext_fullpath))
