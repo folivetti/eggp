@@ -71,11 +71,11 @@ jobs:
           #    runner: "macos-14"
           #    arch: "arm64"
           #    plat: "macosx"
-          #- os:
-          #    name: "Windows"
-          #    runner: "windows-latest"
-          #    arch: "AMD64"
-          #    plat: "win"
+          - os:
+              name: "Windows"
+              runner: "windows-latest"
+              arch: "AMD64"
+              plat: "win"
 
     steps:
       - uses: actions/checkout@v4
