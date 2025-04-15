@@ -111,21 +111,38 @@ jobs:
         run: echo "::debug::$(ghc --info)"
         
       - if: matrix.job.os.name == 'Windows'
-        name: Install vcpkg
+        name: Install build tools with Chocolatey
         run: |
-          git clone https://github.com/microsoft/vcpkg.git
-          cd vcpkg
-          bootstrap-vcpkg.bat
-          vcpkg install nlopt:x64-windows
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+          choco install make
+          choco install mingw
+
+      - if: matrix.job.os.name == 'Windows'
+        name: Build and install nlopt
+        run: |
+          git clone https://github.com/stevengj/nlopt.git
+          cd nlopt
+          mkdir build
+          cd build
+          cmake .. -G "MinGW Makefiles" -DCMAKE_INSTALL_PREFIX=C:\nlopt
+          mingw32-make
+          mingw32-make install
+
+      - if: matrix.job.os.name == 'Windows'
+        name: Debug nlopt installation
+        run: |
+          dir C:\nlopt\lib
+          dir C:\nlopt\include
+          dir C:\nlopt\bin
+
       - if: matrix.job.os.name == 'Windows'
         name: Configure environment variables
         run: |
-          echo "LIBRARY_PATH=C:\vcpkg\installed\x64-windows\lib" >> $env:GITHUB_ENV
-          echo "CPATH=C:\vcpkg\installed\x64-windows\include" >> $env:GITHUB_ENV
-          echo "INCLUDE=C:/nlopt/include" >> $GITHUB_ENV
-          echo "PATH=C:\vcpkg\installed\x64-windows\bin${{ env.PATH }}" >> $env:GITHUB_ENV
+          echo "LIBRARY_PATH=C:\nlopt\lib" >> $env:GITHUB_ENV
+          echo "CPATH=C:\nlopt\include" >> $env:GITHUB_ENV
+          echo "PATH=C:\nlopt\bin${{ env.PATH }}" >> $env:GITHUB_ENV
 
-
+     
       - if: matrix.job.os.name == 'macOS'
         name: Install Homebrew dependencies
         run: |
