@@ -131,8 +131,9 @@ jobs:
       - if: matrix.job.os.name == 'macOS'
         name: Configure environment variables
         run: |
-          echo "LIBRARY_PATH=/usr/local/lib" >> $GITHUB_ENV
-          echo "CPATH=/usr/local/include" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=/usr/local/lib:/opt/homebrew/lib" >> $GITHUB_ENV
+          echo "CPATH=/usr/local/include:/opt/homebrew/include" >> $GITHUB_ENV
+          echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
           echo "MACOSX_DEPLOYMENT_TARGET=13.0" >> $GITHUB_ENV
           
       - # 19-06-2023:
