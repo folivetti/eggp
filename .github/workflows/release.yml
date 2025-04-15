@@ -66,16 +66,16 @@ jobs:
           #    runner: "macos-13"
           #    arch: "x86_64"
           #    plat: "macosx"
-          - os:
-              name: "macOS"
-              runner: "macos-14"
-              arch: "arm64"
-              plat: "macosx"
           #- os:
-          #    name: "Windows"
-          #    runner: "windows-latest"
-          #    arch: "AMD64"
-          #    plat: "win"
+          #    name: "macOS"
+          #    runner: "macos-14"
+          #    arch: "arm64"
+          #    plat: "macosx"
+          - os:
+              name: "Windows"
+              runner: "windows-latest"
+              arch: "AMD64"
+              plat: "win"
 
     steps:
       - uses: actions/checkout@v4
