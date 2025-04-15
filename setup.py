@@ -89,7 +89,7 @@ class cabal_build_ext(build_ext):
         print(self.build_temp, "<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
         if sys.platform in ["win32", "cygwin"]:
             
-            self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "C:\vcpkg\installed\x64-windows\lib", "CPATH": "C:\vcpkg\installed\x64-windows\include","INCLUDE": "C:/nlopt/include", "LIB":"C:/nlopt/lib", "PATH":"C:/nlopt/bin", **os.environ})
+            self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "C:\vcpkg\installed\x64-windows\lib", "CPATH": "C:\vcpkg\installed\x64-windows\include","PATH":"C:\vcpkg\installed\x64-windows\bin${{ env.PATH }}", **os.environ})
         elif sys.platform in ["linux"]:
             self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "/usr/local/lib64", "LD_LIBRARY_PATH":"/usr/local/lib64", "C_INCLUDE_PATH": "/usr/local/include", "PKG_CONFIG_PATH": "/usr/local/lib64/pkgconfig", **os.environ})
             
