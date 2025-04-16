@@ -89,7 +89,7 @@ musllinux-x86_64-image = "folivetti/musllinux_1_1_ghc9121_x86_64"
 repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path C:\\nlopt\\bin"
 
 [tool.cibuildwheel.linux]
-repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} --lib-sdir . --add-path /usr/local/lib64"
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} --lib-sdir ."
 
 [tool.mypy]
 mypy_path = "src"
