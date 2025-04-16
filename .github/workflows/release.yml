@@ -225,27 +225,27 @@ jobs:
   ################################################################################
 
   #publish-to-pypi:
-  #  name: Publish to PyPI
-  #  runs-on: ubuntu-latest
-  #  if: startsWith(github.ref, 'refs/tags/')
-  #  needs: [build]
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build]
 
-  #  environment:
-  #    name: pypi
-  #    url: https://pypi.org/p/eggp
+    environment:
+      name: pypi
+      url: https://pypi.org/p/eggp
 
-  #  permissions:
-  #    id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
+    permissions:
+      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
 
-  #  steps:
-  #    - name: Download artifacts
-  #      uses: actions/download-artifact@v4
-  #      with:
-  #        pattern: "wheelhouse-*-*"
-  #        path: "./wheelhouse"
-  #        merge-multiple: true
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "wheelhouse-*-*"
+          path: "./wheelhouse"
+          merge-multiple: true
 
-  #    - name: Publish to PyPI
-  #      uses: pypa/gh-action-pypi-publish@release/v1
-  #      with:
-  #        packages-dir: "./wheelhouse"
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: "./wheelhouse"
