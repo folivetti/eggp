@@ -3,6 +3,9 @@ requires = [
   "find_libpython >=0.3,<0.5; sys_platform == 'win32'",
   "setuptools >=45",
   "swig >=4,<5",
+  "numpy >=2.2",
+  "pandas >=2.2",
+  "scikit-learn >=1.6",
 #  "nlopt >= 2.6.2",
 ]
 build-backend = "setuptools.build_meta"
@@ -84,6 +87,9 @@ musllinux-x86_64-image = "folivetti/musllinux_1_1_ghc9121_x86_64"
 
 [tool.cibuildwheel.windows]
 repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path C:\\nlopt\\bin"
+
+[tool.cibuildwheel.linux]
+repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path /usr/local/lib64"
 
 [tool.mypy]
 mypy_path = "src"

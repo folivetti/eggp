@@ -180,12 +180,18 @@ jobs:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-13' && '13.0' || '14.0' }}
+      - # Build source distribution (sdist)
+        run: |
+          pip install build
+          python -m build --sdist --outdir ./wheelhouse
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: "wheelhouse-${{ matrix.job.os.plat }}-${{ matrix.job.os.arch }}"
-          path: ./wheelhouse/*.whl
+          path: |
+             ./wheelhouse/*.whl
+             ./wheelhouse/*.tar.gz
 
   ################################################################################
   # Publish package to GitHub Releases
@@ -211,7 +217,7 @@ jobs:
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          files: "./wheelhouse/*.whl"
+          files: "./wheelhouse/*"
           fail_on_unmatched_files: true
 
   ################################################################################

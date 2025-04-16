@@ -2,6 +2,15 @@ import atexit
 from contextlib import contextmanager
 from threading import Lock
 from typing import Iterator, List
+from io import StringIO
+import tempfile
+import csv
+
+import numpy as np
+import pandas as pd
+from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.metrics import mean_squared_error, r2_score
 
 from ._binding import (
     unsafe_hs_pyeggp_version,
@@ -49,7 +58,7 @@ def pyeggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int
     with hs_rts_init():
         return unsafe_hs_pyeggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, simplify, dumpTo, loadFrom)
 
-class PyEGGP():
+class PyEGGP(BaseEstimator, RegressorMixin):
     def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, split = 1, simplify = False, dumpTo = "", loadFrom = ""):
         self.gen = gen
         self.nPop = nPop
@@ -66,6 +75,40 @@ class PyEGGP():
         self.simplify = int(simplify)
         self.dumpTo = dumpTo
         self.loadFrom = loadFrom
-    def fit(self, dataset):
-        output = pyeggp_run(dataset, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.split, self.simplify, self.dumpTo, self.loadFrom)
-        return output
+        self.is_fitted_ = False
+
+    def fit(self, X, y):
+        if X.ndim == 1:
+            X = X.reshape(-1,1)
+        y = y.reshape(-1, 1)
+        combined = np.hstack([X, y])
+        header = [f"x{i}" for i in range(X.shape[1])] + ["y"]
+        with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, suffix='.csv') as temp_file:
+            writer = csv.writer(temp_file)
+            writer.writerow(header)
+            writer.writerows(combined)
+            dataset = temp_file.name
+
+        csv_data = pyeggp_run(dataset, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.split, self.simplify, self.dumpTo, self.loadFrom)
+        if len(csv_data) > 0:
+            csv_io = StringIO(csv_data.strip())
+            self.results = pd.read_csv(csv_io, header=0)
+            self.is_fitted_ = True
+        return self
+
+    def predict(self, X):
+        check_is_fitted(self)
+        return self.evaluate_best_model(self.model_, X)
+    def evaluate_best_model(self, x):
+        if x.ndim == 1:
+            x = x.reshape(-1,1)
+        t = np.array(list(map(float, self.results.iloc[-1].theta.split(";"))))
+        return eval(self.results.iloc[-1].Numpy)
+    def evaluate_model(self, ix, x):
+        if x.ndim == 1:
+            x = x.reshape(-1,1)
+        t = np.array(list(map(float, self.results.iloc[-1].theta.split(";"))))
+        return eval(self.results.iloc[i].Numpy)
+    def score(self, X, y):
+        ypred = self.evaluate_best_model(X)
+        return r2_score(y, ypred)

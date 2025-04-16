@@ -358,7 +358,7 @@ egraphGP dataTrainVals args = do
                 thetaStr   = intercalate ";" $ Prelude.map show (MA.toList theta)
                 showFun    = showExpr expr
                 showFunNp  = showPython best'
-            pure $ show ix <> "," <> showFun <> "," <> showFunNp <> ","
+            pure $ show ix <> "," <> showFun <> "," <> "\"" <> showFunNp <> "\"" <> ","
                     <> thetaStr <> "," <> show (countNodes $ convertProtectedOps expr) <> "\n"
         pure (concat ts)
     insertTerms =
