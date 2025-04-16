@@ -3,7 +3,7 @@ requires = [
   "find_libpython >=0.3,<0.5; sys_platform == 'win32'",
   "setuptools >=45",
   "swig >=4,<5",
-  "numpy >=2.2",
+  "numpy >=2",
   "pandas >=2.2",
   "scikit-learn >=1.6",
 #  "nlopt >= 2.6.2",
