@@ -4,7 +4,6 @@ requires = [
   "setuptools >=45",
   "swig >=4,<5",
   "nlopt >= 2.6.2",
-  "delvewheel",
 ]
 build-backend = "setuptools.build_meta"
 
