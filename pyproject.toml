@@ -83,7 +83,7 @@ manylinux-x86_64-image = "folivetti/manylinux2014_ghc9121_x86_64"
 musllinux-x86_64-image = "folivetti/musllinux_1_1_ghc9121_x86_64"
 
 [tool.cibuildwheel.windows]
-repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path C:\\nlopt\\lib"
+repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path C:\\nlopt\\bin"
 
 [tool.mypy]
 mypy_path = "src"
