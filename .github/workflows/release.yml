@@ -232,7 +232,7 @@ jobs:
 
     environment:
       name: pypi
-      url: https://pypi.org/p/eggp
+      url: https://pypi.org/p/pyeggp
 
     permissions:
       id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
