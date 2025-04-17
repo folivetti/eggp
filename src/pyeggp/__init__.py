@@ -96,14 +96,53 @@ class PyEGGP(BaseEstimator, RegressorMixin):
             self.is_fitted_ = True
         return self
 
+    def fit_mvsr(self, Xs, ys):
+        if Xs[0].ndim == 1:
+            Xs = [X.reshape(-1,1) for X in Xs]
+        ys = [y.reshape(-1, 1) for y in ys]
+        combineds = [np.hstack([X, y]) for X, y in zip(Xs, ys)]
+        header = [f"x{i}" for i in range(Xs[0].shape[1])] + ["y"]
+        datasets = []
+        for combined in combineds:
+            with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, suffix='.csv') as temp_file:
+                writer = csv.writer(temp_file)
+                writer.writerow(header)
+                writer.writerows(combined)
+                datasets.append(temp_file.name)
+
+        csv_data = pyeggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.split, self.simplify, self.dumpTo, self.loadFrom)
+        if len(csv_data) > 0:
+            csv_io = StringIO(csv_data.strip())
+            self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str})
+            self.is_fitted_ = True
+        return self
+
     def predict(self, X):
         check_is_fitted(self)
-        return self.evaluate_best_model(self.model_, X)
+        return self.evaluate_best_model(X)
+
+    def predict_mvsr(self, X, view):
+        check_is_fitted(self)
+        return self.evaluate_best_model_view(X, view)
+
     def evaluate_best_model(self, x):
         if x.ndim == 1:
             x = x.reshape(-1,1)
         t = np.array(list(map(float, self.results.iloc[-1].theta.split(";"))))
         return eval(self.results.iloc[-1].Numpy)
+    def evaluate_best_model_view(self, x, view):
+        if x.ndim == 1:
+            x = x.reshape(-1,1)
+        ix = self.results.iloc[-1].id
+        best = self.results[self.results.id==ix].iloc[view]
+        t = np.array(list(map(float, best.theta.split(";"))))
+        return eval(best.Numpy)
+    def evaluate_model_view(self, x, ix, view):
+        if x.ndim == 1:
+            x = x.reshape(-1,1)
+        best = self.results[self.results.id==ix].iloc[view]
+        t = np.array(list(map(float, best.theta.split(";"))))
+        return eval(best.Numpy)
     def evaluate_model(self, ix, x):
         if x.ndim == 1:
             x = x.reshape(-1,1)
