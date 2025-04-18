@@ -137,6 +137,7 @@ class PyEGGP(BaseEstimator, RegressorMixin):
         best = self.results[self.results.id==ix].iloc[view]
         t = np.array(list(map(float, best.theta.split(";"))))
         return eval(best.Numpy)
+
     def evaluate_model_view(self, x, ix, view):
         if x.ndim == 1:
             x = x.reshape(-1,1)

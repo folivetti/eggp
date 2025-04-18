@@ -244,7 +244,8 @@ paretoFront fitFun maxSize printExprFun = concat <$> go 1 0 (-(1.0/0.0))
             ecList <- getBestExprWithSize n
             if not (null ecList)
                 then do let (ec, mf) = head ecList
-                            improved = fromJust mf > f
+                            f' = fromJust mf
+                            improved = f' > f && (not . isNaN) f' && (not . isInfinite) f'
                         ec' <- canonical ec
                         if improved
                                 then do refit fitFun ec'
