@@ -2,6 +2,7 @@ import atexit
 from contextlib import contextmanager
 from threading import Lock
 from typing import Iterator, List
+import string
 from io import StringIO
 import tempfile
 import csv
@@ -57,6 +58,11 @@ def main(args: List[str] = []) -> int:
 def pyeggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, simplify: int, dumpTo: str, loadFrom: str) -> str:
     with hs_rts_init():
         return unsafe_hs_pyeggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, simplify, dumpTo, loadFrom)
+
+def make_function(expression):
+    def func(x, t):
+        return eval(expression)
+    return func
 
 class PyEGGP(BaseEstimator, RegressorMixin):
     def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, split = 1, simplify = False, dumpTo = "", loadFrom = ""):
@@ -152,3 +158,19 @@ class PyEGGP(BaseEstimator, RegressorMixin):
     def score(self, X, y):
         ypred = self.evaluate_best_model(X)
         return r2_score(y, ypred)
+    def get_model(self, idx):
+        alphabet = list(string.ascii_uppercase)
+        row = self.results[self.results['id']==idx].iloc[0]
+        visual_expression = row['Numpy']
+        model = make_function(visual_expression)
+        n_params_used = len(row['theta'].split(sep=';'))
+    
+        # Works for solutions with less than 26 parameters
+        for i in range(n_params_used):
+            visual_expression = visual_expression.replace(f't[{i}]', alphabet[i])
+    
+        # Works for data with less than 50 dimensions
+        for i in range(50):
+            visual_expression = visual_expression.replace(f'x[:, {i}]', f'X{i}')
+    
+        return model, visual_expression
