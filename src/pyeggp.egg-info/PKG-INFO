@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: pyeggp
-Version: 1.0.2
+Version: 1.0.4
 Summary: Python Wheels for eggp algorithm.
 Author-email: Fabricio Olivetti <folivetti@users.noreply.github.com>
 License:                     GNU GENERAL PUBLIC LICENSE
