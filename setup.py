@@ -88,10 +88,12 @@ class cabal_build_ext(build_ext):
         self.mkpath(self.build_temp)
         print(self.build_temp, "<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
         if sys.platform in ["win32", "cygwin"]:
+            self.cabal(["update"])
             self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "C:\\nlopt\\lib", 
                                        "CPATH": "C:\\nlopt\\include",
                                        "PATH":"C:\\nlopt\\bin;" + os.environ.get("PATH", ""), **os.environ})
         elif sys.platform in ["linux"]:
+            self.cabal(["update"])
             self.cabal(["build"], env={"INSTALLDIR": self.build_temp, "LIBRARY_PATH": "/usr/local/lib64", "LD_LIBRARY_PATH":"/usr/local/lib64", "C_INCLUDE_PATH": "/usr/local/include", "PKG_CONFIG_PATH": "/usr/local/lib64/pkgconfig", **os.environ})
             
         else:
