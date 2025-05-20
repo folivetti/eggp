@@ -14,11 +14,11 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.metrics import mean_squared_error, r2_score
 
 from ._binding import (
-    unsafe_hs_pyeggp_version,
-    unsafe_hs_pyeggp_main,
-    unsafe_hs_pyeggp_run,
-    unsafe_hs_pyeggp_init,
-    unsafe_hs_pyeggp_exit,
+    unsafe_hs_eggp_version,
+    unsafe_hs_eggp_main,
+    unsafe_hs_eggp_run,
+    unsafe_hs_eggp_init,
+    unsafe_hs_eggp_exit,
 )
 
 VERSION: str = "1.0.4"
@@ -31,7 +31,7 @@ _hs_rts_lock: Lock = Lock()
 def hs_rts_exit() -> None:
     global _hs_rts_lock
     with _hs_rts_lock:
-        unsafe_hs_pyeggp_exit()
+        unsafe_hs_eggp_exit()
 
 
 @contextmanager
@@ -41,23 +41,23 @@ def hs_rts_init(args: List[str] = []) -> Iterator[None]:
     with _hs_rts_lock:
         if not _hs_rts_init:
             _hs_rts_init = True
-            unsafe_hs_pyeggp_init(args)
+            unsafe_hs_eggp_init(args)
             atexit.register(hs_rts_exit)
     yield None
 
 
 def version() -> str:
     with hs_rts_init():
-        return unsafe_hs_pyeggp_version()
+        return unsafe_hs_eggp_version()
 
 
 def main(args: List[str] = []) -> int:
     with hs_rts_init(args):
-        return unsafe_hs_pyeggp_main()
+        return unsafe_hs_eggp_main()
 
-def pyeggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, simplify: int, dumpTo: str, loadFrom: str) -> str:
+def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str) -> str:
     with hs_rts_init():
-        return unsafe_hs_pyeggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, simplify, dumpTo, loadFrom)
+        return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, simplify, trace, generational, dumpTo, loadFrom)
 
 def make_function(expression, loss="MSE"):
     def func(x, t):
@@ -69,7 +69,7 @@ def make_function(expression, loss="MSE"):
         return y
     return func
 
-class PyEGGP(BaseEstimator, RegressorMixin):
+class EGGP(BaseEstimator, RegressorMixin):
     """ Builds a symbolic regression model using eggp.
 
     Parameters
@@ -141,6 +141,13 @@ class PyEGGP(BaseEstimator, RegressorMixin):
     simplify : bool, default=False
         Whether to apply a final step of equality saturation to simplify the expressions.
 
+    trace : bool, default=False
+        Whether to return a pandas dataframe of all visited expressions.
+
+    generational : bool, default=False
+        Whether to use generational (replacing the currente generation with the new one) instead
+        of keeping the Pareto front.
+
     dumpTo : str, default=""
         If not empty, it will save the final e-graph into the filename.
 
@@ -151,17 +158,17 @@ class PyEGGP(BaseEstimator, RegressorMixin):
 
     Examples
     --------
-    >>> from pyeggp import PyEGGP
+    >>> from eggp import EGGP
     >>> import numpy as np
     >>> X = np.arange(100).reshape(100, 1)
     >>> y = np.zeros((100, ))
-    >>> estimator = PyEGGP()
+    >>> estimator = EGGP()
     >>> estimator.fit(X, y)
     >>>
-    >>> estimator = PyEGGP(loss="Bernoulli")
+    >>> estimator = EGGP(loss="Bernoulli")
     >>> estimator.fit(X, y)
     """
-    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, split = 1, simplify = False, dumpTo = "", loadFrom = ""):
+    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = ""):
         nts = "add,sub,mul,div,power,powerabs,\
                aq,abs,sin,cos,tan,sinh,cosh,tanh,\
                asin,acos,atan,asinh,acosh,atanh,sqrt,\
@@ -189,10 +196,14 @@ class PyEGGP(BaseEstimator, RegressorMixin):
             raise ValueError('optRepeat must be a positive number')
         if nParams < -1:
             raise ValueError('nParams must be either -1 or a positive number')
-        if split < 1:
-            raise ValueError('split must be equal or greater than 1')
+        if folds < 1:
+            raise ValueError('folds must be equal or greater than 1')
         if not isinstance(simplify, bool):
             raise TypeError('simplify must be a boolean')
+        if not isinstance(trace, bool):
+            raise TypeError('trace must be a boolean')
+        if not isinstance(generational, bool):
+            raise TypeError('generational must be a boolean')
         self.gen = gen
         self.nPop = nPop
         self.maxSize = maxSize
@@ -204,13 +215,62 @@ class PyEGGP(BaseEstimator, RegressorMixin):
         self.optIter = optIter
         self.optRepeat = optRepeat
         self.nParams = nParams
-        self.split = split
+        self.folds = folds
         self.simplify = int(simplify)
+        self.trace = int(trace)
+        self.generational = int(generational)
         self.dumpTo = dumpTo
         self.loadFrom = loadFrom
         self.is_fitted_ = False
 
-    def fit(self, X, y):
+    def combine_dataset(self, X, y, Xerr, yerr):
+        ''' Combines the error information into a single dataset.
+
+        Parameters
+        ----------
+        X : np.array
+            An m x n np.array describing m observations of n features.
+        y : np.array
+            An np.array of size m with the measured target values.
+        Xerr : np.array
+               An m x n np.array with the measurement errors of the features.
+        yerr : np.array
+               An np.array of size m with the measurement errors of the target.
+
+        Returns the combined dataset
+        '''
+        if X.ndim == 1:
+            X = X.reshape(-1,1)
+        y = y.reshape(-1, 1)
+        stacked = [X, y]
+        if Xerr is not None and self.loss == "ROXY":
+            Xerr = Xerr.reshape(-1, 1)
+            stacked.append(Xerr)
+        if yerr is not None and self.loss in ["ROXY", "HGaussian"]:
+            yerr = yerr.reshape(-1, 1)
+            stacked.append(yerr)
+        if self.loss == "ROXY":
+            stacked += [np.log10(X).reshape(-1,1), np.log10(y).reshape(-1,1), np.square(Xerr/(Xerr * np.log(10))).reshape(-1,1), np.square(yerr/(yerr*np.log(10))).reshape(-1,1)]
+        return np.hstack(stacked)
+
+    def get_header(self, ndim):
+        if self.loss != "ROXY":
+            return [f"x{i}" for i in range(ndim)] + ["y"]
+        elif self.loss == "HGaussian":
+            return [f"x{i}" for i in range(ndim)] + ["y", "yerr"]
+        else:
+            return ["gbar","gobs","e_gbar","e_gobs","logX","logY","logXErr","logYErr"]
+
+    def get_fname(self, dname, header):
+        if self.loss == "ROXY":
+            return f"{dname}:::gobs:gbar,logX,logY,logXErr,logYErr:e_gobs:e_gbar"
+        elif self.loss == "HGaussian":
+            varnames = ",".join(header[:-2])
+            return f"{dname}:::y:{varnames}:yerr"
+        else:
+            return dname
+
+    def fit(self, X, y, Xerr = None, yerr = None):
         ''' Fits the regression model.
 
         Parameters
@@ -219,26 +279,31 @@ class PyEGGP(BaseEstimator, RegressorMixin):
             An m x n np.array describing m observations of n features.
         y : np.array
             An np.array of size m with the measured target values.
+        Xerr : np.array
+               An m x n np.array with the measurement errors of the features.
+        yerr : np.array
+               An np.array of size m with the measurement errors of the target.
+
+        A table with the fitted models and additional information
+        will be stored as a Pandas dataframe in self.results.
         '''
-        if X.ndim == 1:
-            X = X.reshape(-1,1)
-        y = y.reshape(-1, 1)
-        combined = np.hstack([X, y])
-        header = [f"x{i}" for i in range(X.shape[1])] + ["y"]
+        combined = self.combine_dataset(X, y, Xerr, yerr)
+        header = self.get_header(X.shape[1])
+
         with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, suffix='.csv') as temp_file:
             writer = csv.writer(temp_file)
             writer.writerow(header)
             writer.writerows(combined)
             dataset = temp_file.name
-
-        csv_data = pyeggp_run(dataset, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.split, self.simplify, self.dumpTo, self.loadFrom)
+        dname = self.get_fname(dataset, header)
+        csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom)
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
-            self.results = pd.read_csv(csv_io, header=0)
+            self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str})
             self.is_fitted_ = True
         return self
 
-    def fit_mvsr(self, Xs, ys):
+    def fit_mvsr(self, Xs, ys, Xerrs = None, yerrs = None):
         ''' Fits a multi-view regression model.
 
         Parameters
@@ -248,20 +313,23 @@ class PyEGGP(BaseEstimator, RegressorMixin):
         ys : list(np.array)
             A list of k elements of np.arrays of size m_k with the measured target values.
         '''
-        if Xs[0].ndim == 1:
-            Xs = [X.reshape(-1,1) for X in Xs]
-        ys = [y.reshape(-1, 1) for y in ys]
-        combineds = [np.hstack([X, y]) for X, y in zip(Xs, ys)]
-        header = [f"x{i}" for i in range(Xs[0].shape[1])] + ["y"]
+        if Xerrs is None:
+            Xerrs = [None for _ in Xs]
+        if yerrs is None:
+            yerrs = [None for _ in ys]
+
+        combineds = [self.combine_dataset(X, y, Xerr, yerr) for X, y, Xerr, yerr in zip(Xs, ys, Xerrs, yerrs)]
+        header = self.get_header(Xs[0].shape[1])
         datasets = []
+
         for combined in combineds:
             with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, suffix='.csv') as temp_file:
                 writer = csv.writer(temp_file)
                 writer.writerow(header)
                 writer.writerows(combined)
-                datasets.append(temp_file.name)
+                datasets.append(self.get_fname(temp_file.name, header))
 
-        csv_data = pyeggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.split, self.simplify, self.dumpTo, self.loadFrom)
+        csv_data = eggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom)
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
             self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str})
@@ -346,8 +414,8 @@ class PyEGGP(BaseEstimator, RegressorMixin):
     def evaluate_model(self, ix, x):
         if x.ndim == 1:
             x = x.reshape(-1,1)
-        t = np.array(list(map(float, self.results.iloc[-1].theta.split(";"))))
-        y = eval(self.results.iloc[i].Numpy)
+        t = np.array(list(map(float, self.results.iloc[ix].theta.split(";"))))
+        y = eval(self.results.iloc[ix].Numpy)
         if self.loss == "Bernoulli":
             return 1/(1 + np.exp(-y))
         elif self.loss == "Poisson":
@@ -359,7 +427,7 @@ class PyEGGP(BaseEstimator, RegressorMixin):
         ypred = self.evaluate_best_model(X)
         return r2_score(y, ypred)
     def get_model(self, idx):
-        ''' Get a `model` function and its visual representation. '''
+        ''' Get a `model` function and its visual representation. From srbench. '''
         alphabet = list(string.ascii_uppercase)
         row = self.results[self.results['id']==idx].iloc[0]
         visual_expression = row['Numpy']

@@ -1,0 +1,17 @@
+LICENSE
+README.md
+pyproject.toml
+setup.py
+src/eggp/__init__.py
+src/eggp/__main__.py
+src/eggp/_binding.pyi
+src/eggp/binding.i
+src/eggp/binding.py
+src/eggp/typing.py
+src/eggp.egg-info/PKG-INFO
+src/eggp.egg-info/SOURCES.txt
+src/eggp.egg-info/dependency_links.txt
+src/eggp.egg-info/entry_points.txt
+src/eggp.egg-info/requires.txt
+src/eggp.egg-info/top_level.txt
+test/test_pyeggp.py

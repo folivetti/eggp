@@ -1,10 +1,10 @@
 import sys
 from typing import NoReturn
-import pyeggp
+import eggp
 
 
 def main() -> NoReturn:
-    sys.exit(pyeggp.main(sys.argv))
+    sys.exit(eggp.main(sys.argv))
 
 
 if __name__ == "__main__":

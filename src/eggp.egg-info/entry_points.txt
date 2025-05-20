@@ -1,0 +1,2 @@
+[console_scripts]
+eggp = eggp.__main__:main

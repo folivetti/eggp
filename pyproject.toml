@@ -11,8 +11,8 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyeggp"
-version = "1.0.4"
+name = "eggp"
+version = "1.0.5"
 authors = [{ name = "Fabricio Olivetti", email = "folivetti@users.noreply.github.com" }]
 description = "Python Wheels for eggp algorithm."
 readme = "README.md"
@@ -29,13 +29,13 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
 ]
-dependencies = ["typing_extensions >=4.6,<5; python_version<'3.8'"]
+dependencies = ["typing_extensions >=4.6,<5; python_version<'3.8'", "numpy >=2", "pandas >=2.2", "scikit-learn >=1.6"]
 
 [project.optional-dependencies]
 mypy = ["types_setuptools >=45"]
 
 [project.scripts]
-"pyeggp" = "pyeggp.__main__:main"
+"eggp" = "eggp.__main__:main"
 
 [tool.bumpver]
 current_version = "v1.0.0"
@@ -50,10 +50,10 @@ push = true
   '^version = "{pep440_version}"$',
   '^current_version = "{version}"$',
 ]
-"src/pyeggp/__init__.py" = [
+"src/eggp/__init__.py" = [
   '^VERSION: str = "{pep440_version}"$',
 ]
-"pyeggp.cabal" = ['^version:         {pep440_version}$']
+"eggp.cabal" = ['^version:         {pep440_version}$']
 
 [tool.cibuildwheel]
 # 18-04-2023:

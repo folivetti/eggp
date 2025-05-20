@@ -11,8 +11,8 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 ext_module = Extension(
-    name="pyeggp._binding",
-    sources=["src/pyeggp/binding.i"],
+    name="eggp._binding",
+    sources=["src/eggp/binding.i"],
 )
 
 

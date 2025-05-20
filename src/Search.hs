@@ -5,7 +5,7 @@
 {-# LANGUAGE  BangPatterns #-}
 {-# LANGUAGE  TypeSynonymInstances, FlexibleInstances #-}
 
-module Pyeggp where
+module Search where
 
 import Algorithm.EqSat.Egraph
 import Algorithm.EqSat.Simplify
@@ -28,10 +28,9 @@ import Data.SRTree.Datasets
 import Data.SRTree.Eval
 import Data.SRTree.Random (randomTree)
 import Data.SRTree.Print
-import Random
 import System.Random
 import qualified Data.HashSet as Set
-import Data.List ( sort, maximumBy, intercalate, sortOn, intersperse, nub )
+import Data.List ( sort, maximumBy, intercalate, sortOn, intersperse, nub, zip4 )
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Sequence as FingerTree
@@ -50,97 +49,92 @@ import Control.Scheduler
 import Control.Monad.IO.Unlift
 import Data.SRTree (convertProtectedOps)
 
-import Util
+import Data.SRTree.Random
+import Data.SRTree.Datasets
+import Text.ParseSR
+import Algorithm.EqSat.SearchSR
 
 import Foreign.C (CInt (..), CDouble (..))
 import Foreign.C.String (CString, newCString, withCString, peekCString, peekCAString, newCAString)
-import Paths_Pyeggp (version)
+import Paths_eggp (version)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
 import Text.Read (readMaybe)
 import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
 
-foreign import ccall unsafe_py_write_stdout :: CString -> IO ()
+data Args = Args
+  { _dataset      :: String,
+    _testData     :: String,
+    _gens         :: Int,
+    _maxSize      :: Int,
+    _folds        :: Int,
+    _trace        :: Bool,
+    _distribution :: Distribution,
+    _optIter      :: Int,
+    _optRepeat    :: Int,
+    _nParams      :: Int,
+    _nPop         :: Int,
+    _nTournament  :: Int,
+    _pc           :: Double,
+    _pm           :: Double,
+    _nonterminals :: String,
+    _dumpTo       :: String,
+    _loadFrom     :: String,
+    _generational :: Bool,
+    _simplify     :: Bool
+  }
+  deriving (Show)
 
-py_write_stdout :: String -> IO ()
-py_write_stdout str = withCString str unsafe_py_write_stdout
+csvHeader :: String
+csvHeader = "id,view,Expression,Numpy,theta,size,loss_train,loss_val,loss_test,maxloss,R2_train,R2_val,R2_test,mdl_train,mdl_val,mdl_test"
 
-foreign import ccall unsafe_py_write_stderr :: CString -> IO ()
-
-py_write_stderr :: String -> IO ()
-py_write_stderr str = withCString str unsafe_py_write_stderr
-
-foreign export ccall hs_pyeggp_version :: IO CString
-
-hs_pyeggp_version :: IO CString
-hs_pyeggp_version =
-  newCString (showVersion version)
-
-foreign export ccall hs_pyeggp_main :: IO CInt
-
-exitHandler :: ExitCode -> IO CInt
-exitHandler ExitSuccess = return 0
-exitHandler (ExitFailure n) = return (fromIntegral n)
-
-uncaughtExceptionHandler :: SomeException -> IO CInt
-uncaughtExceptionHandler (SomeException e) =
-  py_write_stderr (displayException e) >> return 1
-
-hs_pyeggp_main :: IO CInt
-hs_pyeggp_main =
-  handle uncaughtExceptionHandler $
-    handle exitHandler $ do
-      getArgs >>= \args -> do
-        --out <- pyeggp args
-        case "" of
-          ""  -> py_write_stdout $ "wrong arguments"
-          css -> py_write_stdout css
-      return 0
-
-foreign export ccall hs_pyeggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> IO CString
-
-hs_pyeggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> IO CString
-hs_pyeggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams split simplify dumpTo loadFrom = do
-  dataset' <- peekCString dataset
-  nonterminals' <- peekCString nonterminals
-  loss' <- peekCString loss
-  dumpTo' <- peekCString dumpTo
-  loadFrom' <- peekCString loadFrom
-  out  <- pyeggp dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral split) (simplify /= 0) dumpTo' loadFrom'
-  newCString out
-
-egraphGP :: [(DataSet, DataSet)] -> Args -> StateT EGraph (StateT StdGen IO) String
-egraphGP dataTrainVals args = do
+egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> StateT EGraph (StateT StdGen IO) String
+egraphGP dataTrainVals dataTests args = do
   when ((not.null) (_loadFrom args)) $ (io $ BS.readFile (_loadFrom args)) >>= \eg -> put (decode eg)
 
+  insertTerms
+  evaluateUnevaluated fitFun
+  
   pop <- replicateM (_nPop args) $ do ec <- insertRndExpr (_maxSize args) rndTerm rndNonTerm >>= canonical
                                       updateIfNothing fitFun ec
                                       pure ec
-  insertTerms
-  evaluateUnevaluated fitFun
   pop' <- Prelude.mapM canonical pop
+
+  output <- if _trace args 
+               then forM (Prelude.zip [0..] pop') $ uncurry printExpr
+               else pure []
+
   let m = (_nPop args) `div` (_maxSize args)
 
-  finalPop <- iterateFor (_gens args) pop' $ \it ps' -> do
+  (finalPop, finalOut, _) <- iterateFor (_gens args) (pop', output, _nPop args) $ \it (ps', out, curIx) -> do
     newPop' <- replicateM (_nPop args) (evolve ps')
+
+    out' <- if _trace args
+              then forM (Prelude.zip [curIx..] newPop') $ uncurry printExpr
+              else pure []
 
     totSz <- gets (Map.size . _eNodeToEClass) -- (IntMap.size . _eClass)
     let full = totSz > max maxMem (_nPop args)
     when full (cleanEGraph >> cleanDB)
 
-    newPop <- do let n_paretos = (_nPop args) `div` (_maxSize args)
-                 pareto <- concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
-                 let remainder = _nPop args - length pareto
-                 lft <- if full
-                           then getTopFitEClassThat remainder (const True)
-                           else pure $ Prelude.take remainder newPop'
-                 Prelude.mapM canonical (pareto <> lft)
-    pure newPop
+    newPop <- if _generational args 
+                 then Prelude.mapM canonical newPop' 
+                 else do 
+                     let n_paretos = (_nPop args) `div` (_maxSize args)
+                     pareto <- concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
+                     let remainder = _nPop args - length pareto
+                     lft <- if full
+                               then getTopFitEClassThat remainder (const True)
+                               else pure $ Prelude.take remainder newPop'
+                     Prelude.mapM canonical (pareto <> lft)
+    pure (newPop, out <> out', curIx + (_nPop args)) 
 
   when ((not.null) (_dumpTo args)) $ get >>= (io . BS.writeFile (_dumpTo args) . encode )
-  pf <- paretoFront fitFun (_maxSize args) printExpr
-  pure $ "id,view,Expression,Numpy,theta,size,loss,maxLoss\n" <> pf
+  pf <- if _trace args 
+           then pure finalOut 
+           else paretoFront fitFun (_maxSize args) printExpr
+  pure $ unlines (csvHeader : concat pf) 
   where
     maxSize = (_maxSize args)
     maxMem = 2000000 -- running 1 iter of eqsat for each new individual will consume ~3GB
@@ -173,8 +167,8 @@ egraphGP dataTrainVals args = do
                          insertFitness eId (fromJust $ _fitness info) (_theta info)
 
     rndTerm    = do coin <- toss
-                    if coin then Random.randomFrom terms else Random.randomFrom params
-    rndNonTerm = Random.randomFrom nonTerms
+                    if coin then randomFrom terms else randomFrom params
+    rndNonTerm = randomFrom nonTerms
 
     refitChanged = do ids <- gets (_refits . _eDB) >>= Prelude.mapM canonical . Set.toList >>= pure . nub
                       modify' $ over (eDB . refits) (const Set.empty)
@@ -316,89 +310,47 @@ egraphGP dataTrainVals args = do
                                         r' <- getBestExpr r
                                         pure . Fix $ Bin op l' r'
 
-    checkToken parent en' = do en <- canonize en'
-                               mEc <- gets ((Map.!? en) . _eNodeToEClass)
-                               case mEc of
-                                    Nothing -> pure True
-                                    Just ec -> do ec' <- canonical ec
-                                                  ec'' <- canonize (parent ec')
-                                                  not <$> doesExist ec''
-    doesExist, doesNotExist :: ENode -> RndEGraph Bool
-    doesExist en = gets ((Map.member en) . _eNodeToEClass)
-    doesNotExist en = gets ((Map.notMember en) . _eNodeToEClass)
 
-    doesNotExistGens :: [Maybe (EClassId -> ENode)] -> ENode -> RndEGraph Bool
-    doesNotExistGens []              en = gets ((Map.notMember en) . _eNodeToEClass)
-    doesNotExistGens (mGrand:grands) en = do b <- gets ((Map.notMember en) . _eNodeToEClass)
-                                             if b
-                                               then pure True
-                                               else case mGrand of
-                                                    Nothing -> pure False
-                                                    Just gf -> do ec  <- gets ((Map.! en) . _eNodeToEClass)
-                                                                  en' <- canonize (gf ec)
-                                                                  doesNotExistGens grands en'
-
-    printExpr :: Int -> EClassId -> RndEGraph String
+    printExpr :: Int -> EClassId -> RndEGraph [String]
     printExpr ix ec = do
         thetas' <- gets (_theta . _info . (IM.! ec) . _eClass)
         bestExpr <- (if _simplify args then simplifyEqSatDefault else id) <$> getBestExpr ec
-        let nParams = countParamsUniq bestExpr
-            fromSz (MA.Sz x) = x 
-            nThetas  = Prelude.map (fromSz . MA.size) thetas'
-        (_, thetas) <- if Prelude.any (/=nParams) nThetas || _simplify args
-                        then fitFun bestExpr
+
+        let best'   = if shouldReparam then relabelParams bestExpr else relabelParamsOrder bestExpr
+            nParams = countParamsUniq best'
+            fromSz (MA.Sz x) = x
+            nThetas = Prelude.map (fromSz . MA.size) thetas'
+        (_, thetas) <- if Prelude.any (/=nParams) nThetas
+                        then fitFun best'
                         else pure (1.0, thetas')
 
         maxLoss <- negate . fromJust <$> getFitness ec
-        ts <- forM (Prelude.zip3 [0..] dataTrainVals thetas) $ \(view, (dataTrain, dataVal), theta) -> do
+        ts <- forM (Data.List.zip4 [0..] dataTrainVals dataTests thetas) $ \(view, (dataTrain, dataVal), dataTest, theta) -> do
             let (x, y, mYErr) = dataTrain
                 (x_val, y_val, mYErr_val) = dataVal
+                (x_te, y_te, mYErr_te) = dataTest
                 distribution = _distribution args
-                best'     = if shouldReparam then relabelParams bestExpr else relabelParamsOrder bestExpr
+
                 expr      = paramsToConst (MA.toList theta) best'
-                thetaStr  = intercalate ";" $ Prelude.map show (MA.toList theta)
-                showFun   = showExpr expr
-                showFunNp = showPython best'
-                mse_train = nll distribution mYErr_val x_val y_val best' theta
-            pure . (<> "\n") . intercalate "," $ [show ix, show view, showFun, "\"" <> showFunNp <> "\"", thetaStr, show (countNodes $ convertProtectedOps expr), if isNaN mse_train then "1e+10" else show mse_train, show (negate maxLoss) ]
-        pure (concat ts)
+                showNA z  = if isNaN z then "" else show z
+                r2_train  = r2 x y best' theta
+                r2_val    = r2 x_val y_val best' theta
+                r2_te     = r2 x_te y_te best' theta
+                nll_train  = nll distribution mYErr x y best' theta
+                nll_val    = nll distribution mYErr_val x_val y_val best' theta
+                nll_te     = nll distribution mYErr_te x_te y_te best' theta
+                mdl_train  = mdl distribution mYErr x y theta best'
+                mdl_val    = mdl distribution mYErr_val x_val y_val theta best'
+                mdl_te     = mdl distribution mYErr_te x_te y_te theta best'
+                vals       = intercalate ","
+                           $ Prelude.map showNA [ nll_train, nll_val, nll_te, maxLoss
+                                                , r2_train, r2_val, r2_te
+                                                , mdl_train, mdl_val, mdl_te]
+                thetaStr   = intercalate ";" $ Prelude.map show (MA.toList theta)
+            pure $ show ix <> "," <> show view <> "," <> showExpr expr <> "," <> "\"" <> showPython best' <> "\","
+                           <> thetaStr <> "," <> show (countNodes $ convertProtectedOps expr)
+                           <> "," <> vals
+        pure ts
+
     insertTerms =
         forM terms $ \t -> do fromTree myCost t >>= canonical
-
-data Args = Args
-  { _dataset      :: String,
-    _gens         :: Int,
-    _maxSize      :: Int,
-    _split        :: Int,
-    _distribution :: Distribution,
-    _optIter      :: Int,
-    _optRepeat    :: Int,
-    _nParams      :: Int,
-    _nPop         :: Int,
-    _nTournament  :: Int,
-    _pc           :: Double,
-    _pm           :: Double,
-    _nonterminals :: String,
-    _dumpTo       :: String,
-    _loadFrom     :: String,
-    _simplify     :: Bool
-  }
-  deriving (Show)
-
-
-pyeggp :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Bool -> String -> String -> IO String
-pyeggp dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams split simplify dumpTo loadFrom =
-  case readMaybe loss of
-       Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset gens maxSize split l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom simplify
-                 in eggp arg
-
-eggp :: Args -> IO String
-eggp args = do
-  g    <- getStdGen
-  let datasets = words (_dataset args)
-  dataTrains' <- Prelude.mapM (flip loadTrainingOnly True) datasets -- load all datasets 
-
-  let (dataTrainVals, g') = runState (Prelude.mapM (`splitData` (_split args)) dataTrains') g
-      alg = evalStateT (egraphGP dataTrainVals args) emptyGraph
-  evalStateT alg g'
