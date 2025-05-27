@@ -6,6 +6,7 @@ import string
 from io import StringIO
 import tempfile
 import csv
+import os
 
 import numpy as np
 import pandas as pd
@@ -21,7 +22,7 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.4"
+VERSION: str = "1.0.6"
 
 
 _hs_rts_init: bool = False
@@ -239,6 +240,15 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         Returns the combined dataset
         '''
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
+        if isinstance(y, pd.DataFrame):
+            y = y.to_numpy()
+        if isinstance(Xerr, pd.DataFrame):
+            Xerr = Xerr.to_numpy()
+        if isinstance(yerr, pd.DataFrame):
+            yerr = yerr.to_numpy()
+
         if X.ndim == 1:
             X = X.reshape(-1,1)
         y = y.reshape(-1, 1)
@@ -290,13 +300,19 @@ class EGGP(BaseEstimator, RegressorMixin):
         combined = self.combine_dataset(X, y, Xerr, yerr)
         header = self.get_header(X.shape[1])
 
-        with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, suffix='.csv') as temp_file:
+        with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, prefix='datatemp_', suffix='.csv', dir=os.getcwd()) as temp_file:
             writer = csv.writer(temp_file)
             writer.writerow(header)
             writer.writerows(combined)
             dataset = temp_file.name
         dname = self.get_fname(dataset, header)
-        csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom)
+
+        try:
+            csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom)
+
+        finally:
+            os.remove(dataset)
+
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
             self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str})
@@ -354,6 +370,9 @@ class EGGP(BaseEstimator, RegressorMixin):
         will be stored as a Pandas dataframe in self.results.
         '''
         check_is_fitted(self)
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
+
         return self.evaluate_best_model(X)
 
     def predict_mvsr(self, X, view):
@@ -375,9 +394,15 @@ class EGGP(BaseEstimator, RegressorMixin):
             A vector of predictions
         '''
         check_is_fitted(self)
+        if isinstance(X, pd.DataFrame):
+            X = X.to_numpy()
+
         return self.evaluate_best_model_view(X, view)
 
     def evaluate_best_model(self, x):
+        if isinstance(x, pd.DataFrame):
+            x = x.to_numpy()
+
         if x.ndim == 1:
             x = x.reshape(-1,1)
         t = np.array(list(map(float, self.results.iloc[-1].theta.split(";"))))
@@ -388,6 +413,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             return np.exp(y)
         return y
     def evaluate_best_model_view(self, x, view):
+        if isinstance(x, pd.DataFrame):
+            x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
         ix = self.results.iloc[-1].id
@@ -401,6 +428,8 @@ class EGGP(BaseEstimator, RegressorMixin):
         return y
 
     def evaluate_model_view(self, x, ix, view):
+        if isinstance(x, pd.DataFrame):
+            x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
         best = self.results[self.results.id==ix].iloc[view]
@@ -412,6 +441,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             return np.exp(y)
         return y
     def evaluate_model(self, ix, x):
+        if isinstance(x, pd.DataFrame):
+            x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
         t = np.array(list(map(float, self.results.iloc[ix].theta.split(";"))))
@@ -424,6 +455,8 @@ class EGGP(BaseEstimator, RegressorMixin):
     def score(self, X, y):
         ''' Calculates the score (single-view only).
         '''
+        if isinstance(y, pd.DataFrame):
+            y = y.to_numpy()
         ypred = self.evaluate_best_model(X)
         return r2_score(y, ypred)
     def get_model(self, idx):
