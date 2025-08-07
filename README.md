@@ -146,7 +146,7 @@ cabal install
 ### Basic Example
 
 ```python
-from pyeggp import PyEGGP
+from eggp import EGGP
 import numpy as np
 
 # Create sample data
@@ -154,7 +154,7 @@ X = np.linspace(-10, 10, 100).reshape(-1, 1)
 y = 2 * X.ravel() + 3 * np.sin(X.ravel()) + np.random.normal(0, 1, 100)
 
 # Create and fit the model
-model = PyEGGP(gen=100, nonterminals="add,sub,mul,div,sin,cos")
+model = EGGP(gen=100, nonterminals="add,sub,mul,div,sin,cos")
 model.fit(X, y)
 
 # Make predictions
@@ -167,7 +167,7 @@ print(model.results)
 ### Multi-View Symbolic Regression
 
 ```python
-from pyeggp import PyEGGP
+from eggp import EGGP
 import numpy as np
 
 # Create multiple views of data
@@ -178,7 +178,7 @@ X2 = np.linspace(0, 10, 100).reshape(-1, 1)
 y2 = np.sin(X2.ravel()) + np.random.normal(0, 0.2, 100)
 
 # Create and fit multi-view model
-model = PyEGGP(gen=150, nPop=200)
+model = EGGP(gen=150, nPop=200)
 model.fit_mvsr([X1, X2], [y1, y2])
 
 # Make predictions for each view
@@ -191,13 +191,13 @@ y_pred2 = model.predict_mvsr(X2, view=1)
 ```python
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-from pyeggp import PyEGGP
+from eggp import EGGP
 
 # Split data
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 # Create and fit model
-model = PyEGGP(gen=150, nPop=150, optIter=100)
+model = EGGP(gen=150, nPop=150, optIter=100)
 model.fit(X_train, y_train)
 
 # Evaluate on test set
@@ -270,7 +270,7 @@ After fitting, the `results` attribute contains a pandas DataFrame with details 
 
 ## Citation
 
-If you use PyEGGP in your research, please cite:
+If you use EGGP in your research, please cite:
 
 ```
 @inproceedings{eggp,
