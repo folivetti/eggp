@@ -78,7 +78,7 @@ build = [
 skip = [
   # 18-04-2023:
   # PyPy builds do not work.
-  "pp*",
+ # "pp*",
 ]
 manylinux-aarch64-image = "folivetti/manylinux_2_28_ghc9121_aarch64"
 manylinux-i686-image = "folivetti/manylinux2014_ghc9121_i686"
