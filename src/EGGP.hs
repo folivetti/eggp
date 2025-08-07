@@ -115,16 +115,17 @@ hs_eggp_main =
                                    \ https://arxiv.org/abs/2501.17848\n"
            <> header "eggp - E-graph Genetic Programming for Symbolic Regression." )
 
-foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> IO CString
+foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> IO CString
 
-hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> IO CString
-hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds simplify trace generational dumpTo loadFrom = do
+hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> IO CString
+hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' = do
   dataset' <- peekCString dataset
   nonterminals' <- peekCString nonterminals
   loss' <- peekCString loss
   dumpTo' <- peekCString dumpTo
   loadFrom' <- peekCString loadFrom
-  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom'
+  varnames <- peekCString varnames'
+  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames
   newCString out
 
 opt :: Parser Args
@@ -226,12 +227,23 @@ opt = Args
        ( long "simplify"
        <> help "simplify the expressions before displaying them."
        )
+  <*> option auto
+       ( long "max-time"
+       <> value (-1)
+       <> showDefault
+       <> help "maximum allowed time budget (in seconds, -1 it will run for the number of generations)"
+       )
+  <*> strOption
+       ( long "varnames"
+       <> value ""
+       <> showDefault
+       <> help "comma separated variable names." )
 
-eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> IO String
-eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds simplify trace generational dumpTo loadFrom =
+eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> IO String
+eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames =
   case readMaybe loss of
        Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify
+       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames
                  in eggp arg
 
 eggp :: Args -> IO String

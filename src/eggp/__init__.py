@@ -13,6 +13,7 @@ import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.metrics import mean_squared_error, r2_score
+import matplotlib.pyplot as plt
 
 from ._binding import (
     unsafe_hs_eggp_version,
@@ -22,7 +23,7 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.6"
+VERSION: str = "1.0.7"
 
 
 _hs_rts_init: bool = False
@@ -56,9 +57,9 @@ def main(args: List[str] = []) -> int:
     with hs_rts_init(args):
         return unsafe_hs_eggp_main()
 
-def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str) -> str:
+def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str) -> str:
     with hs_rts_init():
-        return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, simplify, trace, generational, dumpTo, loadFrom)
+        return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames)
 
 def make_function(expression, loss="MSE"):
     def func(x, t):
@@ -169,7 +170,7 @@ class EGGP(BaseEstimator, RegressorMixin):
     >>> estimator = EGGP(loss="Bernoulli")
     >>> estimator.fit(X, y)
     """
-    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = ""):
+    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = ""):
         nts = "add,sub,mul,div,power,powerabs,\
                aq,abs,sin,cos,tan,sinh,cosh,tanh,\
                asin,acos,atan,asinh,acosh,atanh,sqrt,\
@@ -205,6 +206,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             raise TypeError('trace must be a boolean')
         if not isinstance(generational, bool):
             raise TypeError('generational must be a boolean')
+        if not isinstance(max_time, int):
+            raise TypeError('max_time must be an integer')
         self.gen = gen
         self.nPop = nPop
         self.maxSize = maxSize
@@ -217,6 +220,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         self.optRepeat = optRepeat
         self.nParams = nParams
         self.folds = folds
+        self.max_time = max_time
         self.simplify = int(simplify)
         self.trace = int(trace)
         self.generational = int(generational)
@@ -242,7 +246,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         '''
         if isinstance(X, pd.DataFrame):
             X = X.to_numpy()
-        if isinstance(y, pd.DataFrame):
+        if isinstance(y, pd.DataFrame) or isinstance(y, pd.Series):
             y = y.to_numpy()
         if isinstance(Xerr, pd.DataFrame):
             Xerr = Xerr.to_numpy()
@@ -299,6 +303,10 @@ class EGGP(BaseEstimator, RegressorMixin):
         '''
         combined = self.combine_dataset(X, y, Xerr, yerr)
         header = self.get_header(X.shape[1])
+        if isinstance(X, pd.DataFrame):
+            varnames = ",".join(X.columns)
+        else:
+            varnames = ""
 
         with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, prefix='datatemp_', suffix='.csv', dir=os.getcwd()) as temp_file:
             writer = csv.writer(temp_file)
@@ -308,7 +316,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         dname = self.get_fname(dataset, header)
 
         try:
-            csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom)
+            csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames)
 
         finally:
             os.remove(dataset)
@@ -337,15 +345,27 @@ class EGGP(BaseEstimator, RegressorMixin):
         combineds = [self.combine_dataset(X, y, Xerr, yerr) for X, y, Xerr, yerr in zip(Xs, ys, Xerrs, yerrs)]
         header = self.get_header(Xs[0].shape[1])
         datasets = []
+        datasetsNames = []
+        if isinstance(Xs[0], pd.DataFrame):
+            varnames = ",".join(Xs[0].columns)
+        else:
+            varnames = ""
 
         for combined in combineds:
-            with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, suffix='.csv') as temp_file:
+            with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, prefix='datatemp_', suffix='.csv', dir=os.getcwd()) as temp_file:
                 writer = csv.writer(temp_file)
                 writer.writerow(header)
                 writer.writerows(combined)
+                datasetsNames.append(temp_file.name)
                 datasets.append(self.get_fname(temp_file.name, header))
 
-        csv_data = eggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom)
+        try:
+            csv_data = eggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
+                                self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames)
+        finally:
+            for dataset in datasetsNames:
+                os.remove(dataset)
+
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
             self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str})
@@ -476,3 +496,14 @@ class EGGP(BaseEstimator, RegressorMixin):
             visual_expression = visual_expression.replace(f'x[:, {i}]', f'X{i}')
     
         return model, visual_expression
+    def cal_plot(self, X, y, ix):
+        yhat = self.evaluate_model(ix, X)
+        y_lo = y.min() - 0.1*(y.max() - y.min())
+        y_hi = y.max() + 0.1*(y.max() - y.min())
+        rng  = np.arange(y_lo, y_hi, 0.01)
+        plt.plot(rng, rng)
+        plt.plot(yhat, y, '.')
+        plt.xlabel(r"$\hat{y}$")
+        plt.ylabel(r"$y$")
+        plt.ylim(y_lo, y_hi)
+        plt.xlim(y_lo, y_hi)
