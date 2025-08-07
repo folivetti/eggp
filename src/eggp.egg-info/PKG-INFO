@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: eggp
-Version: 1.0.5
+Version: 1.0.7
 Summary: Python Wheels for eggp algorithm.
 Author-email: Fabricio Olivetti <folivetti@users.noreply.github.com>
 License:                     GNU GENERAL PUBLIC LICENSE
@@ -694,6 +694,7 @@ Requires-Dist: typing_extensions<5,>=4.6; python_version < "3.8"
 Requires-Dist: numpy>=2
 Requires-Dist: pandas>=2.2
 Requires-Dist: scikit-learn>=1.6
+Requires-Dist: matplotlib>=3
 Provides-Extra: mypy
 Requires-Dist: types_setuptools>=45; extra == "mypy"
 Dynamic: license-file
