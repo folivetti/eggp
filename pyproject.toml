@@ -106,9 +106,9 @@ where = ["src"]
 legacy_tox_ini = """
 [tox]
 min_version = 4
-env_list = py{39,310,311,312,313}-{lin,mac,win}
+env_list = py{39,310,311,312,313,314}-{lin,mac,win}
 
-[testenv:py{39,310,311,312,313}-{lin,mac,win}]
+[testenv:py{39,310,311,312,313,314}-{lin,mac,win}]
 package = external
 package_env = build-{env_name}
 platform =
@@ -135,6 +135,7 @@ package_glob =
   py311-lin: {package_root}{/}dist{/}*cp311*manylinux*.whl
   py312-lin: {package_root}{/}dist{/}*cp312*manylinux*.whl
   py313-lin: {package_root}{/}dist{/}*cp313*manylinux*.whl
+  py314-lin: {package_root}{/}dist{/}*cp314*manylinux*.whl
   py37-mac: {package_root}{/}dist{/}*cp37*macosx*.whl
   py38-mac: {package_root}{/}dist{/}*cp38*macosx*.whl
   py39-mac: {package_root}{/}dist{/}*cp39*macosx*.whl
@@ -142,6 +143,7 @@ package_glob =
   py311-mac: {package_root}{/}dist{/}*cp311*macosx*.whl
   py312-mac: {package_root}{/}dist{/}*cp312*macosx*.whl
   py313-mac: {package_root}{/}dist{/}*cp313*macosx*.whl
+  py314-mac: {package_root}{/}dist{/}*cp314*macosx*.whl
   py37-win: {package_root}{/}dist{/}*cp37*win*.whl
   py38-win: {package_root}{/}dist{/}*cp38*win*.whl
   py39-win: {package_root}{/}dist{/}*cp39*win*.whl
@@ -149,6 +151,7 @@ package_glob =
   py311-win: {package_root}{/}dist{/}*cp311*win*.whl
   py312-win: {package_root}{/}dist{/}*cp312*win*.whl
   py313-win: {package_root}{/}dist{/}*cp313*win*.whl
+  py314-win: {package_root}{/}dist{/}*cp314*win*.whl
 allowlist_externals =
   sh
 commands =
