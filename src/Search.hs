@@ -41,6 +41,7 @@ import List.Shuffle ( shuffle )
 import Algorithm.SRTree.NonlinearOpt
 import Data.Binary ( encode, decode )
 import qualified Data.ByteString.Lazy as BS
+import Data.List.Split (splitOn)
 
 import Algorithm.EqSat (runEqSat,applySingleMergeOnlyEqSat)
 
@@ -62,6 +63,7 @@ import System.Exit (ExitCode (..))
 import Text.Read (readMaybe)
 import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
+import Data.Time.Clock.POSIX
 
 data Args = Args
   { _dataset      :: String,
@@ -82,12 +84,14 @@ data Args = Args
     _dumpTo       :: String,
     _loadFrom     :: String,
     _generational :: Bool,
-    _simplify     :: Bool
+    _simplify     :: Bool,
+    _maxtime      :: Int,
+    _varnames     :: String
   }
   deriving (Show)
 
 csvHeader :: String
-csvHeader = "id,view,Expression,Numpy,theta,size,loss_train,loss_val,loss_test,maxloss,R2_train,R2_val,R2_test,mdl_train,mdl_val,mdl_test"
+csvHeader = "id,view,Expression,Numpy,Math,theta,size,loss_train,loss_val,loss_test,maxloss,R2_train,R2_val,R2_test,mdl_train,mdl_val,mdl_test"
 
 egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> StateT EGraph (StateT StdGen IO) String
 egraphGP dataTrainVals dataTests args = do
@@ -95,6 +99,8 @@ egraphGP dataTrainVals dataTests args = do
 
   insertTerms
   evaluateUnevaluated fitFun
+
+  t0 <- io $ getPOSIXTime
   
   pop <- replicateM (_nPop args) $ do ec <- insertRndExpr (_maxSize args) rndTerm rndNonTerm >>= canonical
                                       updateIfNothing fitFun ec
@@ -106,8 +112,9 @@ egraphGP dataTrainVals dataTests args = do
                else pure []
 
   let m = (_nPop args) `div` (_maxSize args)
+      mTime = if _maxtime args < 0 then Nothing else Just (fromIntegral $ _maxtime args - 5) -- add 5 seconds slack
 
-  (finalPop, finalOut, _) <- iterateFor (_gens args) (pop', output, _nPop args) $ \it (ps', out, curIx) -> do
+  (finalPop, finalOut, _) <- iterateFor (_gens args) t0 mTime (pop', output, _nPop args) $ \it (ps', out, curIx) -> do
     newPop' <- replicateM (_nPop args) (evolve ps')
 
     out' <- if _trace args
@@ -176,9 +183,16 @@ egraphGP dataTrainVals dataTests args = do
                                             (f, p) <- fitFun t
                                             insertFitness ec f p
 
-    iterateFor 0 xs f = pure xs
-    iterateFor n xs f = do xs' <- f n xs
-                           iterateFor (n-1) xs' f
+    iterateFor 0  _    _ xs f = pure xs
+    iterateFor n t0 maxT xs f = do xs' <- f n xs
+                                   t1 <- io $ getPOSIXTime
+                                   let delta = t1 - t0
+                                       maxT' = (subtract delta) <$> maxT
+                                   case maxT' of
+                                      Nothing -> iterateFor (n-1) t1 maxT' xs' f
+                                      Just mt -> if mt <= 0
+                                                    then pure xs
+                                                    else iterateFor (n-1) t1 maxT' xs' f
 
     evolve xs' = do xs <- Prelude.mapM canonical xs'
                     parents <- tournament xs
@@ -346,8 +360,12 @@ egraphGP dataTrainVals dataTests args = do
                            $ Prelude.map showNA [ nll_train, nll_val, nll_te, maxLoss
                                                 , r2_train, r2_val, r2_te
                                                 , mdl_train, mdl_val, mdl_te]
-                thetaStr   = intercalate ";" $ Prelude.map show (MA.toList theta)
-            pure $ show ix <> "," <> show view <> "," <> showExpr expr <> "," <> "\"" <> showPython best' <> "\","
+                thetaStr    = intercalate ";" $ Prelude.map show (MA.toList theta)
+                varnames    = _varnames args
+                showExprFun = if null varnames then showExpr else showExprWithVars (splitOn "," varnames)
+                showLatexFun = if null varnames then showLatex else showLatexWithVars (splitOn "," varnames)
+            pure $ show ix <> "," <> show view <> "," <> showExprFun expr <> "," <> "\"" <> showPython best' <> "\","
+                           <> "\"$$" <> showLatexFun best' <> "$$\","
                            <> thetaStr <> "," <> show (countNodes $ convertProtectedOps expr)
                            <> "," <> vals
         pure ts

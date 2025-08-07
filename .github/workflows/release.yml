@@ -178,7 +178,8 @@ jobs:
           config-file: "{package}/pyproject.toml"
         env:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
-          CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
+          #CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
+          CIBW_BUILD: "cp39-manylinux_x86_64 cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64"
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-13' && '13.0' || '14.0' }}
       - # Build source distribution (sdist)
         run: |
