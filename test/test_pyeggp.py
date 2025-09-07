@@ -1,13 +1,13 @@
 from eggp import eggp_run, EGGP
 import pandas as pd
 
-output = eggp_run("test/data.csv", 100, 100, 10, 3, 0.9, 0.3, "add,sub,mul,div,log", "MSE", 50, 2, -1, 3, 0, 0, 0, "", "")
+#output = eggp_run("test/data.csv", 100, 100, 10, 3, 0.9, 0.3, "add,sub,mul,div,log", "MSE", 50, 2, -1, 3, 0, 0, 0, "", "", "", 0)
 
-print(output)
+#print(output)
 
-output = eggp_run("test/data.csv test/data2.csv", 100, 100, 10, 3, 0.9, 0.3, "add,sub,mul,div,log", "MSE", 50, 2, -1, 3, 0, 0, 0, "", "")
+#output = eggp_run("test/data.csv test/data2.csv", 100, 100, 10, 3, 0.9, 0.3, "add,sub,mul,div,log", "MSE", 50, 2, -1, 3, 0, 0, 0, "", "", "", 0)
 
-print(output)
+#print(output)
 
 print("Check EGGP")
 df = pd.read_csv("test/data.csv")

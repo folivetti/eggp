@@ -8,13 +8,15 @@
 module Search where
 
 import Algorithm.EqSat.Egraph
-import Algorithm.EqSat.Simplify
+import Algorithm.EqSat.Simplify hiding (myCost)
 import Algorithm.EqSat.Build
 import Algorithm.EqSat.Queries
 import Algorithm.EqSat.Info
 import Algorithm.EqSat.DB
 import Algorithm.SRTree.Likelihoods
 import Algorithm.SRTree.ModelSelection
+import qualified Data.SRTree.Random as Random
+
 import Algorithm.SRTree.Opt
 import Control.Lens (element, makeLenses, over, (&), (+~), (-~), (.~), (^.))
 import Control.Monad (foldM, forM_, forM, when, unless, filterM, (>=>), replicateM, replicateM_)
@@ -65,6 +67,8 @@ import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
 import Data.Time.Clock.POSIX
 
+import Debug.Trace
+
 data Args = Args
   { _dataset      :: String,
     _testData     :: String,
@@ -86,14 +90,15 @@ data Args = Args
     _generational :: Bool,
     _simplify     :: Bool,
     _maxtime      :: Int,
-    _varnames     :: String
+    _varnames     :: String,
+    _cache        :: Bool
   }
   deriving (Show)
 
 csvHeader :: String
 csvHeader = "id,view,Expression,Numpy,Math,theta,size,loss_train,loss_val,loss_test,maxloss,R2_train,R2_val,R2_test,mdl_train,mdl_val,mdl_test"
 
-egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> StateT EGraph (StateT StdGen IO) String
+egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> RndEGraph String
 egraphGP dataTrainVals dataTests args = do
   when ((not.null) (_loadFrom args)) $ (io $ BS.readFile (_loadFrom args)) >>= \eg -> put (decode eg)
 
@@ -102,7 +107,7 @@ egraphGP dataTrainVals dataTests args = do
 
   t0 <- io $ getPOSIXTime
   
-  pop <- replicateM (_nPop args) $ do ec <- insertRndExpr (_maxSize args) rndTerm rndNonTerm >>= canonical
+  pop <- replicateM (_nPop args) $ do ec <- insertRndExpr' (_maxSize args) rndTerm rndNonTerm >>= canonical
                                       updateIfNothing fitFun ec
                                       pure ec
   pop' <- Prelude.mapM canonical pop
@@ -135,6 +140,9 @@ egraphGP dataTrainVals dataTests args = do
                                then getTopFitEClassThat remainder (const True)
                                else pure $ Prelude.take remainder newPop'
                      Prelude.mapM canonical (pareto <> lft)
+    when (it `mod` 100 == 0) $ do
+      c <- getCache get
+      io $ print (IntMap.size $ Prelude.head c)
     pure (newPop, out <> out', curIx + (_nPop args)) 
 
   when ((not.null) (_dumpTo args)) $ get >>= (io . BS.writeFile (_dumpTo args) . encode )
@@ -144,6 +152,7 @@ egraphGP dataTrainVals dataTests args = do
   pure $ unlines (csvHeader : concat pf) 
   where
     maxSize = (_maxSize args)
+    emptyCache = [IntMap.empty | _ <- dataTrainVals]
     maxMem = 2000000 -- running 1 iter of eqsat for each new individual will consume ~3GB
     fitFun = fitnessMV shouldReparam (_optRepeat args) (_optIter args) (_distribution args) dataTrainVals
     nonTerms   = parseNonTerms (_nonterminals args)
@@ -179,8 +188,8 @@ egraphGP dataTrainVals dataTests args = do
 
     refitChanged = do ids <- gets (_refits . _eDB) >>= Prelude.mapM canonical . Set.toList >>= pure . nub
                       modify' $ over (eDB . refits) (const Set.empty)
-                      forM_ ids $ \ec -> do t <- getBestExpr ec
-                                            (f, p) <- fitFun t
+                      forM_ ids $ \ec -> do --t <- getBestExpr ec
+                                            (f, p) <- fitFun ec
                                             insertFitness ec f p
 
     iterateFor 0  _    _ xs f = pure xs
@@ -198,10 +207,11 @@ egraphGP dataTrainVals dataTests args = do
                     parents <- tournament xs
                     offspring <- combine parents
                     --applySingleMergeOnlyEqSat myCost rewritesParams >> cleanDB
-                    if _nParams args == 0
-                       then runEqSat myCost rewritesWithConstant 1 >> cleanDB >> refitChanged
-                       else runEqSat myCost rewritesParams 1 >> cleanDB >> refitChanged
+                    --if _nParams args == 0
+                    --   then runEqSat myCost rewritesWithConstant 1 >> cleanDB >> refitChanged
+                    --   else runEqSat myCost rewritesParams 1 >> cleanDB >> refitChanged
                     canonical offspring >>= updateIfNothing fitFun
+                    when (not $ _cache args) (getCache $ put emptyCache)
                     canonical offspring
                     --pure offspring
 
@@ -223,7 +233,9 @@ egraphGP dataTrainVals dataTests args = do
                             else do pos <- rnd $ randomRange (1, sz-1)
                                     cands <- getAllSubClasses p2
                                     tree <- getSubtree pos 0 Nothing [] cands p1
-                                    fromTree myCost (relabel tree) >>= canonical
+                                    ec <- fromTree myCost (relabel tree) >>= canonical
+                                    t <- getBestExpr ec
+                                    fromTree myCost (relabel t) >>= canonical
 
     getSubtree :: Int -> Int -> Maybe (EClassId -> ENode) -> [Maybe (EClassId -> ENode)] -> [EClassId] -> EClassId -> RndEGraph (Fix SRTree)
     getSubtree 0 sz (Just parent) mGrandParents cands p' = do
@@ -272,7 +284,9 @@ egraphGP dataTrainVals dataTests args = do
                   if coin
                      then do pos <- rnd $ randomRange (0, sz-1)
                              tree <- mutAt pos maxSize Nothing p
-                             fromTree myCost (relabel tree) >>= canonical
+                             ec <- fromTree myCost (relabel tree) >>= canonical
+                             t <- getBestExpr ec
+                             fromTree myCost (relabel t) >>= canonical
                      else pure p
 
     peel :: Fix SRTree -> SRTree ()
@@ -283,10 +297,10 @@ egraphGP dataTrainVals dataTests args = do
     peel (Fix (Const x)) = Const x
 
     mutAt :: Int -> Int -> Maybe (EClassId -> ENode) -> EClassId -> RndEGraph (Fix SRTree)
-    mutAt 0 sizeLeft Nothing       _ = (insertRndExpr sizeLeft rndTerm rndNonTerm >>= canonical) >>= getBestExpr -- we chose to mutate the root
+    mutAt 0 sizeLeft Nothing       _ = (insertRndExpr' sizeLeft rndTerm rndNonTerm >>= canonical) >>= getBestExpr -- we chose to mutate the root
     mutAt 0 1        _             _ = rnd $ randomFrom terms -- we don't have size left
     mutAt 0 sizeLeft (Just parent) _ = do -- we reached the mutation place
-      ec    <- insertRndExpr sizeLeft rndTerm rndNonTerm >>= canonical -- create a random expression with the size limit
+      ec    <- insertRndExpr' sizeLeft rndTerm rndNonTerm >>= canonical -- create a random expression with the size limit
       (Fix tree) <- getBestExpr ec           --
       root  <- getBestENode ec
       exist <- canonize (parent ec) >>= doesExist
@@ -335,7 +349,7 @@ egraphGP dataTrainVals dataTests args = do
             fromSz (MA.Sz x) = x
             nThetas = Prelude.map (fromSz . MA.size) thetas'
         (_, thetas) <- if Prelude.any (/=nParams) nThetas
-                        then fitFun best'
+                        then fitFun ec
                         else pure (1.0, thetas')
 
         maxLoss <- negate . fromJust <$> getFitness ec
@@ -371,4 +385,12 @@ egraphGP dataTrainVals dataTests args = do
         pure ts
 
     insertTerms =
-        forM terms $ \t -> do fromTree myCost t >>= canonical
+        forM terms $ \t -> do fromTree myCost (relabel t) >>= canonical
+
+    insertRndExpr' maxSize rndTerm rndNonTerm =
+      do grow <- rnd toss
+         n <- rnd (randomFrom [if maxSize > 4 then 4 else 1 .. maxSize])
+         t <- rnd $ Random.randomTree 3 8 n rndTerm rndNonTerm grow
+         ec <- fromTree myCost (relabel t) >>= canonical
+         t' <- getBestExpr ec
+         fromTree myCost (relabel t') >>= canonical

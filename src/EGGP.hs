@@ -104,7 +104,8 @@ hs_eggp_main =
 
         let (dataTrainVals, g') = runState (Prelude.mapM (`splitData` (_folds args)) dataTrains') g
             alg = evalStateT (egraphGP dataTrainVals dataTests args) emptyGraph
-        out <- evalStateT alg g'
+            r = evalStateT alg g'
+        out <- evalStateT r [IntMap.empty | _ <- dataTrainVals]
         py_write_stdout out
 
         return 0
@@ -115,17 +116,17 @@ hs_eggp_main =
                                    \ https://arxiv.org/abs/2501.17848\n"
            <> header "eggp - E-graph Genetic Programming for Symbolic Regression." )
 
-foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> IO CString
+foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
 
-hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> IO CString
-hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' = do
+hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
+hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' cache = do
   dataset' <- peekCString dataset
   nonterminals' <- peekCString nonterminals
   loss' <- peekCString loss
   dumpTo' <- peekCString dumpTo
   loadFrom' <- peekCString loadFrom
   varnames <- peekCString varnames'
-  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames
+  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (cache /= 0)
   newCString out
 
 opt :: Parser Args
@@ -238,12 +239,18 @@ opt = Args
        <> value ""
        <> showDefault
        <> help "comma separated variable names." )
+  <*> option auto
+      ( long "no-cache"
+      <> value False
+      <> showDefault
+      <> help "disable evaluation caching"
+      )
 
-eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> IO String
-eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames =
+eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
+eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames cache =
   case readMaybe loss of
        Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames
+       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames cache
                  in eggp arg
 
 eggp :: Args -> IO String
@@ -257,4 +264,5 @@ eggp args = do
 
   let (dataTrainVals, g') = runState (Prelude.mapM (`splitData` (_folds args)) dataTrains') g
       alg = evalStateT (egraphGP dataTrainVals dataTests args) emptyGraph
-  evalStateT alg g'
+      r = evalStateT alg g'
+  evalStateT r [IntMap.empty | _ <- dataTrainVals]
