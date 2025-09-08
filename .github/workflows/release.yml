@@ -86,7 +86,7 @@ jobs:
         run: echo "::debug::$(uname -a)"
 
       - # Required to run job via act: https://github.com/nektos/act
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           cache: "pip"
           cache-dependency-path: "./requirements-ci.txt"
