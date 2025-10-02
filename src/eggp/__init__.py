@@ -23,7 +23,7 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.7"
+VERSION: str = "1.0.8"
 
 
 _hs_rts_init: bool = False

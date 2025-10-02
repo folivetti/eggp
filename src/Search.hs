@@ -174,7 +174,7 @@ egraphGP dataTrainVals dataTests args = do
                          insertFitness eId (fromJust $ _fitness info) (_theta info)
 
     rndTerm    = do coin <- toss
-                    if coin then randomFrom terms else randomFrom params
+                    if coin || _nParams args == 0 then randomFrom terms else randomFrom params
     rndNonTerm = randomFrom nonTerms
 
     refitChanged = do ids <- gets (_refits . _eDB) >>= Prelude.mapM canonical . Set.toList >>= pure . nub
