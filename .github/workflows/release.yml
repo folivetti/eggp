@@ -63,7 +63,7 @@ jobs:
           #    plat: "musllinux"
           - os:
               name: "macOS"
-              runner: "macos-13"
+              runner: "macos-15-intel"
               arch: "x86_64"
               plat: "macosx"
           - os:
@@ -154,7 +154,7 @@ jobs:
           echo "LIBRARY_PATH=/usr/local/lib:/opt/homebrew/lib" >> $GITHUB_ENV
           echo "CPATH=/usr/local/include:/opt/homebrew/include" >> $GITHUB_ENV
           echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
-          echo "MACOSX_DEPLOYMENT_TARGET=13.0" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
           
       - # 19-06-2023:
         # Required to build aarch64 wheels.
@@ -180,7 +180,8 @@ jobs:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
           CIBW_SKIP: "cp314*"
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-13' && '13.0' || '14.0' }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
+      
       - # Build source distribution (sdist)
         run: |
           pip install build
