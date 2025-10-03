@@ -23,7 +23,7 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.8"
+VERSION: str = "1.0.9"
 
 
 _hs_rts_init: bool = False
@@ -425,7 +425,8 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         if x.ndim == 1:
             x = x.reshape(-1,1)
-        t = np.array(list(map(float, self.results.iloc[-1].theta.split(";"))))
+        tStr = self.results.iloc[-1].theta.split(";")
+        t = np.array(list(map(float, tStr))) if len(tStr[0]) > 0  else np.array([])
         y = eval(self.results.iloc[-1].Numpy)
         if self.loss == "Bernoulli":
             return 1/(1 + np.exp(-y))
@@ -439,7 +440,7 @@ class EGGP(BaseEstimator, RegressorMixin):
             x = x.reshape(-1,1)
         ix = self.results.iloc[-1].id
         best = self.results[self.results.id==ix].iloc[view]
-        t = np.array(list(map(float, best.theta.split(";"))))
+        t = np.array(list(map(float, best.theta.split(";")))) if len(best.theta) > 0 else np.array([])
         y = eval(best.Numpy)
         if self.loss == "Bernoulli":
             return 1/(1 + np.exp(-y))
@@ -453,7 +454,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         if x.ndim == 1:
             x = x.reshape(-1,1)
         best = self.results[self.results.id==ix].iloc[view]
-        t = np.array(list(map(float, best.theta.split(";"))))
+        t = np.array(list(map(float, best.theta.split(";")))) if len(best.theta) > 0 else np.array([])
         y = eval(best.Numpy)
         if self.loss == "Bernoulli":
             return 1/(1 + np.exp(-y))
@@ -465,7 +466,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
-        t = np.array(list(map(float, self.results.iloc[ix].theta.split(";"))))
+        tStr = self.results.iloc[ix].theta.split(";")
+        t = np.array(list(map(float, tStr))) if len(tStr[0]) > 0 else np.array([])
         y = eval(self.results.iloc[ix].Numpy)
         if self.loss == "Bernoulli":
             return 1/(1 + np.exp(-y))
