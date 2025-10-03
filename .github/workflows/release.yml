@@ -63,12 +63,12 @@ jobs:
           #    plat: "musllinux"
           - os:
               name: "macOS"
-              runner: "macos-13"
+              runner: "macos-14-intel"
               arch: "x86_64"
               plat: "macosx"
           - os:
               name: "macOS"
-              runner: "macos-15-intel"
+              runner: "macos-14"
               arch: "arm64"
               plat: "macosx"
           - os:
@@ -181,6 +181,7 @@ jobs:
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
           CIBW_SKIP: "cp314*"
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
+      
       - # Build source distribution (sdist)
         run: |
           pip install build
