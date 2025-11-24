@@ -78,7 +78,7 @@ jobs:
               plat: "win"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - # 12-02-2024:
         # Print the macOS architecture.
