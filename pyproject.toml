@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-  "find_libpython >=0.3,<0.5; sys_platform == 'win32'",
+  "find_libpython >=0.3,<0.6; sys_platform == 'win32'",
   "setuptools >=45",
   "swig >=4,<5",
   "numpy >=2",
