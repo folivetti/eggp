@@ -23,7 +23,7 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.9"
+VERSION: str = "1.0.10"
 
 
 _hs_rts_init: bool = False
@@ -323,7 +323,7 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
-            self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str})
+            self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str}, keep_default_na=False)
             self.is_fitted_ = True
         return self
 
@@ -368,7 +368,7 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
-            self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str})
+            self.results = pd.read_csv(csv_io, header=0, dtype={'theta':str}, keep_default_na=False)
             self.is_fitted_ = True
         return self
 
@@ -434,6 +434,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             return np.exp(y)
         return y
     def evaluate_best_model_view(self, x, view):
+        if view not in np.unique(self.results.view.values):
+            raise ValueError("Invalid view index")
         if isinstance(x, pd.DataFrame):
             x = x.to_numpy()
         if x.ndim == 1:
@@ -453,6 +455,11 @@ class EGGP(BaseEstimator, RegressorMixin):
             x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
+        if ix not in np.unique(self.results.id.values):
+            raise ValueError("Invalid model index")
+        if view not in np.unique(self.results.view.values):
+            raise ValueError("Invalid view index")
+
         best = self.results[self.results.id==ix].iloc[view]
         t = np.array(list(map(float, best.theta.split(";")))) if len(best.theta) > 0 else np.array([])
         y = eval(best.Numpy)
@@ -466,6 +473,9 @@ class EGGP(BaseEstimator, RegressorMixin):
             x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
+        if ix not in np.unique(self.results.id.values):
+            raise ValueError("Invalid model index")
+
         tStr = self.results.iloc[ix].theta.split(";")
         t = np.array(list(map(float, tStr))) if len(tStr[0]) > 0 else np.array([])
         y = eval(self.results.iloc[ix].Numpy)
@@ -483,11 +493,14 @@ class EGGP(BaseEstimator, RegressorMixin):
         return r2_score(y, ypred)
     def get_model(self, idx):
         ''' Get a `model` function and its visual representation. From srbench. '''
+        if idx not in np.unique(self.results.id.values):
+            raise ValueError("Invalid model index")
+
         alphabet = list(string.ascii_uppercase)
         row = self.results[self.results['id']==idx].iloc[0]
         visual_expression = row['Numpy']
         model = make_function(visual_expression, self.loss)
-        n_params_used = len(row['theta'].split(sep=';'))
+        n_params_used = len(row['theta'].split(sep=';')) if len(row['theta']) > 0 else 0
     
         # Works for solutions with less than 26 parameters
         for i in range(n_params_used):
@@ -499,6 +512,9 @@ class EGGP(BaseEstimator, RegressorMixin):
     
         return model, visual_expression
     def cal_plot(self, X, y, ix):
+        if ix not in np.unique(self.results.id.values):
+            raise ValueError("Invalid model index")
+
         yhat = self.evaluate_model(ix, X)
         y_lo = y.min() - 0.1*(y.max() - y.min())
         y_hi = y.max() + 0.1*(y.max() - y.min())
