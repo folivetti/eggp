@@ -188,7 +188,7 @@ jobs:
           python -m build --sdist --outdir ./wheelhouse
 
       - name: Upload wheels
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: "wheelhouse-${{ matrix.job.os.plat }}-${{ matrix.job.os.arch }}"
           path: |
