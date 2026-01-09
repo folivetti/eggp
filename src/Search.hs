@@ -8,7 +8,7 @@
 module Search where
 
 import Algorithm.EqSat.Egraph
-import Algorithm.EqSat.Simplify
+import Algorithm.EqSat.Simplify hiding ( myCost )
 import Algorithm.EqSat.Build
 import Algorithm.EqSat.Queries
 import Algorithm.EqSat.Info
@@ -353,9 +353,9 @@ egraphGP dataTrainVals dataTests args = do
                 nll_train  = nll distribution mYErr x y best' theta
                 nll_val    = nll distribution mYErr_val x_val y_val best' theta
                 nll_te     = nll distribution mYErr_te x_te y_te best' theta
-                mdl_train  = mdl distribution mYErr x y theta best'
-                mdl_val    = mdl distribution mYErr_val x_val y_val theta best'
-                mdl_te     = mdl distribution mYErr_te x_te y_te theta best'
+                mdl_train  = fractionalBayesFactor distribution mYErr x y theta best'
+                mdl_val    = fractionalBayesFactor distribution mYErr_val x_val y_val theta best'
+                mdl_te     = fractionalBayesFactor distribution mYErr_te x_te y_te theta best'
                 vals       = intercalate ","
                            $ Prelude.map showNA [ nll_train, nll_val, nll_te, maxLoss
                                                 , r2_train, r2_val, r2_te
