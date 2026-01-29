@@ -12,6 +12,7 @@ source-repository-package
     location: https://github.com/folivetti/srtree
     tag: fdb0a27b7ba3b5da9e51a13c5ec5e1870ff78fd8
 
-package *
-  extra-include-dirs: /opt/homebrew/include
-  extra-lib-dirs: /opt/homebrew/lib
+if os(darwin)
+    package *
+      extra-include-dirs: /opt/homebrew/include
+      extra-lib-dirs: /opt/homebrew/lib
