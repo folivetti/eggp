@@ -9,4 +9,4 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/folivetti/srtree
-    tag: edd40049405e13c8da54a2a629acd9132d234f17
+    tag: fdb0a27b7ba3b5da9e51a13c5ec5e1870ff78fd8

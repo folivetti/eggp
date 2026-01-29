@@ -23,7 +23,7 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.10"
+VERSION: str = "1.0.11"
 
 
 _hs_rts_init: bool = False
@@ -175,7 +175,7 @@ class EGGP(BaseEstimator, RegressorMixin):
                aq,abs,sin,cos,tan,sinh,cosh,tanh,\
                asin,acos,atan,asinh,acosh,atanh,sqrt,\
                sqrtabs,cbrt,square,log,logabs,exp,recip,cube"
-        losses = ["MSE", "Gaussian", "Bernoulli", "Poisson"]
+        losses = ["MSE", "LOG10", "Gaussian", "Bernoulli", "Poisson"]
         if gen < 1:
             raise ValueError('gen should be greater than 1')
         if nPop < 1:
