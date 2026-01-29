@@ -1,5 +1,6 @@
 packages: .
-allow-newer: table-layout:*, haskeline:*, aeson:*
+allow-newer: table-layout:*, haskeline:*, aeson:*,mwc-random:*
+allow-older: base
 
 source-repository-package
     type: git
@@ -10,3 +11,7 @@ source-repository-package
     type: git
     location: https://github.com/folivetti/srtree
     tag: fdb0a27b7ba3b5da9e51a13c5ec5e1870ff78fd8
+
+package *
+  extra-include-dirs: /opt/homebrew/include
+  extra-lib-dirs: /opt/homebrew/lib
