@@ -10,7 +10,7 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/folivetti/srtree
-    tag: bfec40b865fd66d3b4a7570167f63257ca95b151
+    tag: e1e88ecc1047d14f6557740773e571f49a7b4cf4
 
 if os(darwin)
     package *
