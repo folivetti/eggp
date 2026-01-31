@@ -15,7 +15,7 @@ Z = df.values
 X = Z[:,:-1]
 y = Z[:,-1]
 
-reg = EGGP(100, 100, 10, 3, 0.9, 0.3, "add,sub,mul,div,log", "MSE", 50, 2, -1, 3, True, False, False, "", "")
+reg = EGGP(100, 100, 10, 3, 0.9, 0.3, "add,sub,mul,div,log", "LOG10", 50, 2, -1, 3, True, False, False, "", "")
 reg.fit(X, y)
 print(reg.score(X, y))
 
