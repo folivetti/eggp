@@ -86,7 +86,8 @@ data Args = Args
     _generational :: Bool,
     _simplify     :: Bool,
     _maxtime      :: Int,
-    _varnames     :: String
+    _varnames     :: String,
+    _useFracBayes :: Bool
   }
   deriving (Show)
 
@@ -129,7 +130,11 @@ egraphGP dataTrainVals dataTests args = do
                  then Prelude.mapM canonical newPop' 
                  else do 
                      let n_paretos = (_nPop args) `div` (_maxSize args)
-                     pareto <- concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
+                     pareto <- if (_useFracBayes args)
+                                 then getParetoFront
+                                 else concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
+                     -- pareto <- concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
+                     -- pareto <- getParetoFront
                      let remainder = _nPop args - length pareto
                      lft <- if full
                                then getTopFitEClassThat remainder (const True)
@@ -160,6 +165,15 @@ egraphGP dataTrainVals dataTests args = do
     isUni _           = False
     isBin (Bin _ _ _) = True
     isBin _           = False
+
+    getParetoFront = do
+      let sortedDLs = sort [fromIntegral x * log (fromIntegral y) | x <- [2 .. _maxSize args], y <- [2 .. x]]
+          between x (a, b) = x >= a && x <= b
+          nParetos = 2
+      pareto <- (concat <$> (forM (Prelude.zip sortedDLs (Prelude.tail sortedDLs)) $
+        \(lo, hi) -> getTopFitEClassThat nParetos (\ec -> ((_dl . _info) ec) `between` (Just lo, Just hi))))
+          >>= Prelude.mapM canonical
+      pure pareto
 
     -- TODO: merge two or more egraphs
     cleanEGraph = do let nParetos = 10 -- (maxMem `div` 5) `div` _maxSize args

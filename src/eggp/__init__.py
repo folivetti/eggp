@@ -23,7 +23,7 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.12"
+VERSION: str = "1.0.13"
 
 
 _hs_rts_init: bool = False
@@ -57,9 +57,9 @@ def main(args: List[str] = []) -> int:
     with hs_rts_init(args):
         return unsafe_hs_eggp_main()
 
-def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str) -> str:
+def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int) -> str:
     with hs_rts_init():
-        return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames)
+        return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames, useFracBayes)
 
 def make_function(expression, loss="MSE"):
     def func(x, t):
@@ -170,7 +170,7 @@ class EGGP(BaseEstimator, RegressorMixin):
     >>> estimator = EGGP(loss="Bernoulli")
     >>> estimator.fit(X, y)
     """
-    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = ""):
+    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = "", useFracBayes = False):
         nts = "add,sub,mul,div,power,powerabs,\
                aq,abs,sin,cos,tan,sinh,cosh,tanh,\
                asin,acos,atan,asinh,acosh,atanh,sqrt,\
@@ -208,6 +208,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             raise TypeError('generational must be a boolean')
         if not isinstance(max_time, int):
             raise TypeError('max_time must be an integer')
+        if not isinstance(useFracBayes, bool):
+            raise TypeError('useFracBayes must be a boolean')
         self.gen = gen
         self.nPop = nPop
         self.maxSize = maxSize
@@ -227,6 +229,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         self.dumpTo = dumpTo
         self.loadFrom = loadFrom
         self.is_fitted_ = False
+        self.useFracBayes = int(useFracBayes)
 
     def combine_dataset(self, X, y, Xerr, yerr):
         ''' Combines the error information into a single dataset.
@@ -316,7 +319,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         dname = self.get_fname(dataset, header)
 
         try:
-            csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames)
+            csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
 
         finally:
             os.remove(dataset)
@@ -361,7 +364,7 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         try:
             csv_data = eggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
-                                self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames)
+                                self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
         finally:
             for dataset in datasetsNames:
                 os.remove(dataset)

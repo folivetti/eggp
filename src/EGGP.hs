@@ -115,17 +115,17 @@ hs_eggp_main =
                                    \ https://arxiv.org/abs/2501.17848\n"
            <> header "eggp - E-graph Genetic Programming for Symbolic Regression." )
 
-foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> IO CString
+foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
 
-hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> IO CString
-hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' = do
+hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
+hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' useFracBayes = do
   dataset' <- peekCString dataset
   nonterminals' <- peekCString nonterminals
   loss' <- peekCString loss
   dumpTo' <- peekCString dumpTo
   loadFrom' <- peekCString loadFrom
   varnames <- peekCString varnames'
-  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames
+  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0)
   newCString out
 
 opt :: Parser Args
@@ -238,12 +238,16 @@ opt = Args
        <> value ""
        <> showDefault
        <> help "comma separated variable names." )
+  <*> switch
+       ( long "frac-bayes-complexity"
+       <> help "Use n_nodes * log unique_nodes as the second objective."
+       )
 
-eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> IO String
-eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames =
+eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
+eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes =
   case readMaybe loss of
        Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames
+       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes
                  in eggp arg
 
 eggp :: Args -> IO String
