@@ -10,8 +10,8 @@ int unsafe_hs_eggp_main() {
   return hs_eggp_main();
 }
 
-char * unsafe_hs_eggp_run( char *dataset, int gens, int nPop, int maxSize, int nTournament, double pc, double pm,  char *nonterminals,  char *loss, int optIter, int optRepeat, int nParams, int split, int max_time, int simplify, int trace, int generational, char *dumpTo,  char *loadFrom, char *varnames ) {
-  return hs_eggp_run(dataset, gens, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames);
+char * unsafe_hs_eggp_run( char *dataset, int gens, int nPop, int maxSize, int nTournament, double pc, double pm,  char *nonterminals,  char *loss, int optIter, int optRepeat, int nParams, int split, int max_time, int simplify, int trace, int generational, char *dumpTo,  char *loadFrom, char *varnames, int useFracBayes ) {
+  return hs_eggp_run(dataset, gens, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames, useFracBayes);
 }
 
 void unsafe_hs_eggp_init(int argc, char **argv) {
@@ -59,6 +59,6 @@ void unsafe_py_write_stderr( char * str) {
 
 char * unsafe_hs_eggp_version();
 int unsafe_hs_eggp_main();
-char * unsafe_hs_eggp_run( char *dataset, int gens, int nPop, int maxSize, int nTournament, double p, double pm,  char *nonterminals,  char *loss, int optIter, int optRepeat, int nParams, int split, int max_time, int simplify,  int trace, int generational, char *dumpTo,  char *loadFrom, char *varnames);
+char * unsafe_hs_eggp_run( char *dataset, int gens, int nPop, int maxSize, int nTournament, double p, double pm,  char *nonterminals,  char *loss, int optIter, int optRepeat, int nParams, int split, int max_time, int simplify,  int trace, int generational, char *dumpTo,  char *loadFrom, char *varnames, int useFracBayes);
 void unsafe_hs_eggp_init(int argc, char **argv);
 void unsafe_hs_eggp_exit();
