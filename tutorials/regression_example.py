@@ -21,8 +21,14 @@ model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonte
 model.fit(df[['r_k', 'log_Re']], df['target'])
 
 print("Multi-objective mode returning the Pareto front without simplifcation: ")
-print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'mdl_train']])
+print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'dl_train']])
 
+model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonterminals='add,sub,mul,div,power,exp,log', loss='MSE', optIter=100, optRepeat=5, nParams=2, folds=2, max_time=120, simplify=False, dumpTo='regression_example.egg', useFracBayes=True)
+
+model.fit(df[['r_k', 'log_Re']], df['target'])
+
+print("Multi-objective mode returning the Pareto front with fractional bayes complexity without simplifcation: ")
+print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'dl_train']])
 # Running with simplification enabled. Notice that the size used to determine the pareto front is before simplification.
 # It is expected to see two elements on the front with the same size.
 model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonterminals='add,sub,mul,div,power,exp,log', loss='MSE', optIter=100, optRepeat=5, nParams=2, folds=2, max_time=120, simplify=True)
@@ -30,7 +36,7 @@ model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonte
 model.fit(df[['r_k', 'log_Re']], df['target'])
 
 print("\nPareto front with simplifcation enabled: ")
-print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'mdl_train']])
+print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'dl_train']])
 
 # Let's try the generational approach, where the entire population is replaced by the offspring at each generation.
 model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonterminals='add,sub,mul,div,power,exp,log', loss='MSE', optIter=100, optRepeat=5, nParams=2, folds=2, max_time=120, simplify=True, generational=True)
@@ -38,7 +44,7 @@ model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonte
 model.fit(df[['r_k', 'log_Re']], df['target'])
 
 print("\nLast population of generational approach with simplifcation: ")
-print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'mdl_train']])
+print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'dl_train']])
 
 # 'loadFrom' argument enable us to start the search from a previously saved search.
 # Notice that the egg file will contain ALL the evaluated expressions, not only the final population.
@@ -48,4 +54,4 @@ model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonte
 model.fit(df[['r_k', 'log_Re']], df['target'])
 
 print("\nLast population resumed from the first Pareto front: ")
-print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'mdl_train']])
+print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'dl_train']])
