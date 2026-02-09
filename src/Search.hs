@@ -166,9 +166,20 @@ egraphGP dataTrainVals dataTests args = do
     isBin (Bin _ _ _) = True
     isBin _           = False
 
+    sortedDLs = pickEvenly (_nPop args) $ sort [fromIntegral x * log (fromIntegral y) | x <- [2 .. _maxSize args], y <- [2 .. x]]
+
+    pickEvenly :: Int -> [a] -> [a]
+    pickEvenly m xs
+        | m <= 0    = []
+        | m == 1    = [head xs]
+        | m >= n    = xs
+        | otherwise = [xs !! (floor (fromIntegral k * step)) | k <- [0 .. m - 1]]
+      where
+        n = length xs
+        step = fromIntegral (n - 1) / fromIntegral (m - 1)
+
     getParetoFront = do
-      let sortedDLs = sort [fromIntegral x * log (fromIntegral y) | x <- [2 .. _maxSize args], y <- [2 .. x]]
-          between x (a, b) = x >= a && x <= b
+      let between x (a, b) = x >= a && x <= b
           nParetos = 2
       pareto <- (concat <$> (forM (Prelude.zip sortedDLs (Prelude.tail sortedDLs)) $
         \(lo, hi) -> getTopFitEClassThat nParetos (\ec -> ((_dl . _info) ec) `between` (Just lo, Just hi))))
