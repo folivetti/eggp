@@ -12,7 +12,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eggp"
-version = "1.0.16"
+version = "1.0.17"
 authors = [{ name = "Fabricio Olivetti", email = "folivetti@users.noreply.github.com" }]
 description = "Python Wheels for eggp algorithm."
 readme = "README.md"
@@ -27,6 +27,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = ["typing_extensions >=4.6,<5; python_version<'3.8'", "numpy >=2", "pandas >=2.2", "scikit-learn >=1.6", "matplotlib >= 3"]
