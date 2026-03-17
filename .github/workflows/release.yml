@@ -179,7 +179,6 @@ jobs:
         env:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
-          CIBW_SKIP: "cp314*"
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
       
       - # Build source distribution (sdist)
