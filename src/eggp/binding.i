@@ -15,7 +15,13 @@ char * unsafe_hs_eggp_run( char *dataset, int gens, int nPop, int maxSize, int n
 }
 
 void unsafe_hs_eggp_init(int argc, char **argv) {
+  int i;
+  fprintf(stderr, "[eggp_diag] hs_init called with argc=%d\n", argc);
+  for (i = 0; i < argc; i++) {
+    fprintf(stderr, "[eggp_diag]   argv[%d] = \"%s\"\n", i, argv[i] ? argv[i] : "(null)");
+  }
   hs_init(&argc, &argv);
+  fprintf(stderr, "[eggp_diag] hs_init returned, argc now=%d\n", argc);
 }
 
 void unsafe_hs_eggp_exit() {

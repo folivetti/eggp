@@ -7,6 +7,7 @@ from io import StringIO
 import tempfile
 import csv
 import os
+import multiprocessing
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,13 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
+
+# GHC auto-initializes the RTS when the shared library is loaded (during the
+# _binding import below).  At that point it reads the GHCRTS env var for flags;
+# if unset, defaults to -N1.  Set it here so the RTS starts with the right
+# number of capabilities.
+if os.environ.get("GHCRTS") is None:
+    os.environ["GHCRTS"] = "-N4"
 
 from ._binding import (
     unsafe_hs_eggp_version,
@@ -29,7 +37,6 @@ VERSION: str = "1.0.17"
 _hs_rts_init: bool = False
 _hs_rts_lock: Lock = Lock()
 
-
 def hs_rts_exit() -> None:
     global _hs_rts_lock
     with _hs_rts_lock:
@@ -37,7 +44,7 @@ def hs_rts_exit() -> None:
 
 
 @contextmanager
-def hs_rts_init(args: List[str] = []) -> Iterator[None]:
+def hs_rts_init(args: List[str] = ["eggp", "+RTS", "-N4", "-RTS"]) -> Iterator[None]:
     global _hs_rts_init
     global _hs_rts_lock
     with _hs_rts_lock:
@@ -54,7 +61,12 @@ def version() -> str:
 
 
 def main(args: List[str] = []) -> int:
-    with hs_rts_init(args):
+    # args often come from sys.argv which includes the program name at [0].
+    # Strip it and prepend RTS flags so hs_init sees +RTS -N{numCores} -RTS.
+    cli_args = args[1:] if args and not args[0].startswith('-') else args
+    rts_flags = ["+RTS", "-N4", "-s", "-RTS"]
+    rts_args = ["eggp"] + rts_flags
+    with hs_rts_init(rts_args + cli_args):
         return unsafe_hs_eggp_main()
 
 def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int) -> str:

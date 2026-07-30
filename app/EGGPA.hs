@@ -5,7 +5,7 @@
 {-# LANGUAGE  BangPatterns #-}
 {-# LANGUAGE  TypeSynonymInstances, FlexibleInstances #-}
 
-module EGGP where
+module EGGPA where
 
 import Algorithm.EqSat.Egraph
 import Algorithm.EqSat.Simplify
@@ -51,78 +51,11 @@ import Algorithm.EqSat.SearchSR
 import Data.SRTree.Random
 import Data.SRTree.Datasets
 
-import Foreign.C (CInt (..), CDouble (..))
-import Foreign.C.String (CString, newCString, withCString, peekCString, peekCAString, newCAString)
-import Paths_eggp (version)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
 import Text.Read (readMaybe)
 import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
-
-foreign import ccall unsafe_py_write_stdout :: CString -> IO ()
-
-py_write_stdout :: String -> IO ()
-py_write_stdout str = withCString str unsafe_py_write_stdout
-
-foreign import ccall unsafe_py_write_stderr :: CString -> IO ()
-
-py_write_stderr :: String -> IO ()
-py_write_stderr str = withCString str unsafe_py_write_stderr
-
-foreign export ccall hs_eggp_version :: IO CString
-
-hs_eggp_version :: IO CString
-hs_eggp_version =
-  newCString (showVersion version)
-
-foreign export ccall hs_eggp_main :: IO CInt
-
-exitHandler :: ExitCode -> IO CInt
-exitHandler ExitSuccess = return 0
-exitHandler (ExitFailure n) = return (fromIntegral n)
-
-uncaughtExceptionHandler :: SomeException -> IO CInt
-uncaughtExceptionHandler (SomeException e) =
-  py_write_stderr (displayException e) >> return 1
-
-hs_eggp_main :: IO CInt
-hs_eggp_main =
-  handle uncaughtExceptionHandler $
-    handle exitHandler $ do
-        args <- execParser opts 
-        g <- getStdGen
-        let datasets = words (_dataset args)
-        dataTrains' <- Prelude.mapM (flip loadTrainingOnly True) datasets -- load all datasets
-        dataTests   <- if null (_testData args)
-                        then pure dataTrains'
-                        else Prelude.mapM (flip loadTrainingOnly True) $ words (_testData args)
-
-        let (dataTrainVals, g') = runState (Prelude.mapM (`splitData` (_folds args)) dataTrains') g
-            alg = evalStateT (egraphGP dataTrainVals dataTests args) emptyGraph
-        out <- evalStateT alg g'
-        py_write_stdout out
-
-        return 0
-  where
-    opts = Opt.info (opt <**> helper)
-            ( fullDesc <> progDesc "An implementation of GP with modified crossover and mutation\
-                                   \ operators designed to exploit equality saturation and e-graphs.\
-                                   \ https://arxiv.org/abs/2501.17848\n"
-           <> header "eggp - E-graph Genetic Programming for Symbolic Regression." )
-
-foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
-
-hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
-hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' useFracBayes = do
-  dataset' <- peekCString dataset
-  nonterminals' <- peekCString nonterminals
-  loss' <- peekCString loss
-  dumpTo' <- peekCString dumpTo
-  loadFrom' <- peekCString loadFrom
-  varnames <- peekCString varnames'
-  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0)
-  newCString out
 
 opt :: Parser Args
 opt = Args

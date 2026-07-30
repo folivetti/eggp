@@ -15,14 +15,14 @@ import Algorithm.EqSat.Info
 import Algorithm.EqSat.DB
 import Algorithm.SRTree.Likelihoods
 import Algorithm.SRTree.ModelSelection
-import Algorithm.SRTree.Opt
 import Control.Lens (element, makeLenses, over, (&), (+~), (-~), (.~), (^.))
 import Control.Monad (foldM, forM_, forM, when, unless, filterM, (>=>), replicateM, replicateM_)
 import Control.Monad.State.Strict
-import qualified Data.IntMap.Strict as IM
-import qualified Data.Map.Strict as Map
-import Data.Massiv.Array as MA hiding (forM_, forM)
-import Data.Maybe (fromJust, isNothing, isJust)
+
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HashMap
+import Data.Maybe (fromJust, fromMaybe, isNothing, isJust)
+import qualified Data.Vector.Unboxed as V
 import Data.SRTree
 import Data.SRTree.Datasets
 import Data.SRTree.Eval
@@ -36,7 +36,7 @@ import qualified Data.IntSet as IntSet
 import qualified Data.Sequence as FingerTree
 import Data.Function ( on )
 import qualified Data.Foldable as Foldable
-import qualified Data.IntMap as IntMap
+
 import List.Shuffle ( shuffle )
 import Algorithm.SRTree.NonlinearOpt
 import Data.Binary ( encode, decode )
@@ -122,7 +122,7 @@ egraphGP dataTrainVals dataTests args = do
               then forM (Prelude.zip [curIx..] newPop') $ uncurry printExpr
               else pure []
 
-    totSz <- gets (Map.size . _eNodeToEClass) -- (IntMap.size . _eClass)
+    totSz <- gets (HashMap.size . _eNodeToEClass) -- (IntMap.size . _eClass)
     let full = totSz > max maxMem (_nPop args)
     when full (cleanEGraph >> cleanDB)
 
@@ -152,7 +152,7 @@ egraphGP dataTrainVals dataTests args = do
     maxMem = 2000000 -- running 1 iter of eqsat for each new individual will consume ~3GB
     fitFun = fitnessMV shouldReparam (_optRepeat args) (_optIter args) (_distribution args) dataTrainVals
     nonTerms   = parseNonTerms (_nonterminals args)
-    (Sz2 _ nFeats) = MA.size (getX .fst . head $ dataTrainVals)
+    nFeats = length $ getX (fst $ head dataTrainVals)
     params         = if _nParams args == -1 then [param 0] else Prelude.map param [0 .. _nParams args - 1]
     shouldReparam  = _nParams args == -1
     relabel        = if shouldReparam then relabelParams else relabelParamsOrder
@@ -191,19 +191,20 @@ egraphGP dataTrainVals dataTests args = do
                      io . putStrLn $ "cleaning"
                      pareto <- (concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n nParetos))
                                  >>= Prelude.mapM canonical
-                     infos  <- forM pareto (\c -> gets (_info . (IntMap.! c) . _eClass))
+                     infos  <- forM pareto (\c -> _info <$> getEClass c)
                      exprs  <- forM pareto getBestExpr
                      put emptyGraph
                      newIds <- fromTrees myCost $ Prelude.map relabel exprs
-                     forM_ (Prelude.zip newIds (Prelude.reverse infos)) $ \(eId, info) ->
-                         insertFitness eId (fromJust $ _fitness info) (_theta info)
+                     forM_ (Prelude.zip newIds (Prelude.reverse infos)) $ \(eId, info) -> do
+                           let f = fromMaybe (-1.0/0.0) (_fitness info)
+                           insertFitness eId f (_theta info)
 
     rndTerm    = do coin <- toss
                     if coin || _nParams args == 0 then randomFrom terms else randomFrom params
     rndNonTerm = randomFrom nonTerms
 
-    refitChanged = do ids <- gets (_refits . _eDB) >>= Prelude.mapM canonical . Set.toList >>= pure . nub
-                      modify' $ over (eDB . refits) (const Set.empty)
+    refitChanged = do ids <- gets (_refits . _eDB) >>= Prelude.mapM canonical . IntSet.toList >>= pure . nub
+                      modify' $ over (eDB . refits) (const IntSet.empty)
                       forM_ ids $ \ec -> do t <- getBestExpr ec
                                             (f, p) <- fitFun t
                                             insertFitness ec f p
@@ -236,7 +237,7 @@ egraphGP dataTrainVals dataTests args = do
 
     applyTournament :: [EClassId] -> RndEGraph EClassId
     applyTournament xs = do challengers <- replicateM (_nTournament args) (rnd $ randomFrom xs) >>= traverse canonical
-                            fits <- Prelude.map fromJust <$> Prelude.mapM getFitness challengers
+                            fits <- Prelude.map (fromMaybe (-1.0/0.0)) <$> Prelude.mapM getFitness challengers
                             pure . snd . maximumBy (compare `on` fst) $ Prelude.zip fits challengers
 
     combine (p1, p2) = (crossover p1 p2 >>= mutate) >>= canonical
@@ -352,40 +353,64 @@ egraphGP dataTrainVals dataTests args = do
 
     printExpr :: Int -> EClassId -> RndEGraph [String]
     printExpr ix ec = do
-        thetas' <- gets (_theta . _info . (IM.! ec) . _eClass)
+        thetas' <- getTheta ec
         bestExpr <- (if _simplify args then simplifyEqSatDefault else id) <$> getBestExpr ec
 
         let best'   = if shouldReparam then relabelParams bestExpr else relabelParamsOrder bestExpr
             nParams = countParamsUniq best'
-            fromSz (MA.Sz x) = x
-            nThetas = Prelude.map (fromSz . MA.size) thetas'
+            nThetas = Prelude.map V.length thetas'
         (_, thetas) <- if Prelude.any (/=nParams) nThetas
                         then fitFun best'
                         else pure (1.0, thetas')
 
-        maxLoss <- negate . fromJust <$> getFitness ec
+        maxLoss <- maybe 0 negate <$> getFitness ec
         ts <- forM (Data.List.zip4 [0..] dataTrainVals dataTests thetas) $ \(view, (dataTrain, dataVal), dataTest, theta) -> do
             let (x, y, mYErr) = dataTrain
                 (x_val, y_val, mYErr_val) = dataVal
                 (x_te, y_te, mYErr_te) = dataTest
                 distribution = _distribution args
 
-                expr      = paramsToConst (MA.toList theta) best'
+                expr      = paramsToConst (V.toList theta) best'
                 showNA z  = if isNaN z then "" else show z
-                r2_train  = r2 x y best' theta
-                r2_val    = r2 x_val y_val best' theta
-                r2_te     = r2 x_te y_te best' theta
-                nll_train  = nll distribution mYErr x y best' theta
-                nll_val    = nll distribution mYErr_val x_val y_val best' theta
-                nll_te     = nll distribution mYErr_te x_te y_te best' theta
-                mdl_train  = fractionalBayesFactor distribution mYErr x y theta best'
-                mdl_val    = fractionalBayesFactor distribution mYErr_val x_val y_val theta best'
-                mdl_te     = fractionalBayesFactor distribution mYErr_te x_te y_te theta best'
+
+                n          = fromIntegral (V.length y) :: Double
+                n_val      = fromIntegral (V.length y_val) :: Double
+                n_te       = fromIntegral (V.length y_te) :: Double
+                p          = fromIntegral (countParamsUniq best') :: Double
+                f_compl    = countNodes best' * log (countUniqueTokens best')
+
+                -- loss (NLL)
+                nll_train_ = compileLoss x (buildLoss (NLL distribution) n best') y mYErr theta
+                nll_val_   = compileLoss x_val (buildLoss (NLL distribution) n_val best') y_val mYErr_val theta
+                nll_te_    = compileLoss x_te (buildLoss (NLL distribution) n_te best') y_te mYErr_te theta
+
+                -- R2
+                y_mean    = V.sum y / n
+                y_var     = V.sum (V.map (\yi -> (yi - y_mean)^2) y) / n
+                y_val_mean = V.sum y_val / n_val
+                y_val_var  = V.sum (V.map (\yi -> (yi - y_val_mean)^2) y_val) / n_val
+                y_te_mean  = V.sum y_te / n_te
+                y_te_var   = V.sum (V.map (\yi -> (yi - y_te_mean)^2) y_te) / n_te
+
+                mse_train = compileLoss x (buildLoss MSE n best') y Nothing theta
+                r2_train_ = if y_var > 0 then 1 - mse_train / y_var else 0
+                r2_val_   = if y_val_var > 0 then 1 - (compileLoss x_val (buildLoss MSE n_val best') y_val Nothing theta) / y_val_var else 0
+                r2_te_    = if y_te_var > 0 then 1 - (compileLoss x_te (buildLoss MSE n_te best') y_te Nothing theta) / y_te_var else 0
+
+                -- fractional Bayes factor
+                b_train   = 1 / sqrt n
+                nup       = exp (1 - log 3)
+                mdl_train_ = (1 - b_train) * nll_train_ - p / 2 * log b_train + f_compl + p / 2 * log (2*pi*nup)
+                b_val     = 1 / sqrt n_val
+                mdl_val_   = (1 - b_val) * nll_val_ - p / 2 * log b_val + f_compl + p / 2 * log (2*pi*nup)
+                b_te      = 1 / sqrt n_te
+                mdl_te_    = (1 - b_te) * nll_te_ - p / 2 * log b_te + f_compl + p / 2 * log (2*pi*nup)
+
                 vals       = intercalate ","
-                           $ Prelude.map showNA [ nll_train, nll_val, nll_te, maxLoss
-                                                , r2_train, r2_val, r2_te
-                                                , mdl_train, mdl_val, mdl_te]
-                thetaStr    = intercalate ";" $ Prelude.map show (MA.toList theta)
+                           $ Prelude.map showNA [ nll_train_, nll_val_, nll_te_, maxLoss
+                                                 , r2_train_, r2_val_, r2_te_
+                                                 , mdl_train_, mdl_val_, mdl_te_]
+                thetaStr    = intercalate ";" $ Prelude.map show (V.toList theta)
                 varnames    = _varnames args
                 showExprFun = if null varnames then showExpr else showExprWithVars (splitOn "," varnames)
                 showLatexFun = if null varnames then showLatex else showLatexWithVars (splitOn "," varnames)
