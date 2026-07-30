@@ -24,3 +24,4 @@ cabal.project.local~
 build
 binding.py
 binding_wrap.c
+*.tsv
