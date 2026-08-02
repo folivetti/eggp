@@ -3,6 +3,9 @@ packages: .
 
 allow-newer: *
 
+package srtree
+  ghc-options: -fllvm -pgmlo opt-20 -pgmlc llc-20 -optlo-O3 -optlc-mcpu=native -mavx2 -mfma -fexpose-all-unfoldings
+
 source-repository-package
     type: git
     location: https://github.com/haskell/mwc-random

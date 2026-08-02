@@ -54,6 +54,7 @@ import Data.SRTree.Random
 import Data.SRTree.Datasets
 import Text.ParseSR
 import Algorithm.EqSat.SearchSR
+import Algorithm.SRTree.AD (ADBackEnd(..))
 
 import Foreign.C (CInt (..), CDouble (..))
 import Foreign.C.String (CString, newCString, withCString, peekCString, peekCAString, newCAString)
@@ -87,7 +88,8 @@ data Args = Args
     _simplify     :: Bool,
     _maxtime      :: Int,
     _varnames     :: String,
-    _useFracBayes :: Bool
+    _useFracBayes :: Bool,
+    _backend      :: ADBackEnd
   }
   deriving (Show)
 
@@ -150,11 +152,12 @@ egraphGP dataTrainVals dataTests args = do
   where
     maxSize = (_maxSize args)
     maxMem = 2000000 -- running 1 iter of eqsat for each new individual will consume ~3GB
-    fitFun = fitnessMV shouldReparam (_optRepeat args) (_optIter args) (_distribution args) dataTrainVals
+    fitFun = fitnessMV (_backend args) skipValEval shouldReparam (_optRepeat args) (_optIter args) (_distribution args) dataTrainVals
     nonTerms   = parseNonTerms (_nonterminals args)
     nFeats = length $ getX (fst $ head dataTrainVals)
     params         = if _nParams args == -1 then [param 0] else Prelude.map param [0 .. _nParams args - 1]
     shouldReparam  = _nParams args == -1
+    skipValEval    = _folds args == 1
     relabel        = if shouldReparam then relabelParams else relabelParamsOrder
     terms          = if _distribution args == ROXY
                           then (var 0 : params)

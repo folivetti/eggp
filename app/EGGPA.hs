@@ -48,6 +48,7 @@ import Options.Applicative as Opt hiding (Const)
 
 import Search
 import Algorithm.EqSat.SearchSR
+import Algorithm.SRTree.AD (ADBackEnd(..))
 import Data.SRTree.Random
 import Data.SRTree.Datasets
 
@@ -171,12 +172,17 @@ opt = Args
        ( long "frac-bayes-complexity"
        <> help "Use n_nodes * log unique_nodes as the second objective."
        )
+  <*> option auto
+       ( long "backend"
+       <> value MultiThread
+       <> showDefault
+       <> help "AD backend: MultiThread, SingleThread, or Accelerate." )
 
 eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
 eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes =
   case readMaybe loss of
        Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes
+       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread
                  in eggp arg
 
 eggp :: Args -> IO String
