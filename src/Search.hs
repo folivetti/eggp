@@ -101,24 +101,31 @@ egraphGP dataTrainVals dataTests args = do
   when ((not.null) (_loadFrom args)) $ (io $ BS.readFile (_loadFrom args)) >>= \eg -> put (decode eg)
 
   insertTerms
-  evaluateUnevaluated fitFun
+  unevalInit <- gets (IntSet.toList . _unevaluated . _eDB)
+  fitBatch True fitFun unevalInit
 
   t0 <- io $ getPOSIXTime
   
-  pop <- replicateM (_nPop args) $ do ec <- insertRndExpr (_maxSize args) rndTerm rndNonTerm >>= canonical
-                                      updateIfNothing fitFun ec
-                                      pure ec
-  pop' <- Prelude.mapM canonical pop
+  pop <- replicateM (_nPop args) $ insertRndExpr (_maxSize args) rndTerm rndNonTerm >>= canonical
+  fitBatch False fitFun pop
 
   output <- if _trace args 
-               then forM (Prelude.zip [0..] pop') $ uncurry printExpr
+               then forM (Prelude.zip [0..] pop) $ uncurry printExpr
                else pure []
 
   let m = (_nPop args) `div` (_maxSize args)
       mTime = if _maxtime args < 0 then Nothing else Just (fromIntegral $ _maxtime args - 5) -- add 5 seconds slack
 
-  (finalPop, finalOut, _) <- iterateFor (_gens args) t0 mTime (pop', output, _nPop args) $ \it (ps', out, curIx) -> do
+  (finalPop, finalOut, _) <- iterateFor (_gens args) t0 mTime (pop, output, _nPop args) $ \it (ps', out, curIx) -> do
     newPop' <- replicateM (_nPop args) (evolve ps')
+
+    -- Batch-fit the eqsat-flagged refits (force) and the new offspring
+    -- (updateIfNothing semantics) concurrently, before any fitness-based
+    -- selection so Pareto ranking sees fresh fitness values.
+    refitIds <- gets (IntSet.toList . _refits . _eDB)
+    modify' $ over (eDB . refits) (const IntSet.empty)
+    fitBatch True fitFun refitIds
+    fitBatch False fitFun newPop'
 
     out' <- if _trace args
               then forM (Prelude.zip [curIx..] newPop') $ uncurry printExpr
@@ -206,12 +213,6 @@ egraphGP dataTrainVals dataTests args = do
                     if coin || _nParams args == 0 then randomFrom terms else randomFrom params
     rndNonTerm = randomFrom nonTerms
 
-    refitChanged = do ids <- gets (_refits . _eDB) >>= Prelude.mapM canonical . IntSet.toList >>= pure . nub
-                      modify' $ over (eDB . refits) (const IntSet.empty)
-                      forM_ ids $ \ec -> do t <- getBestExpr ec
-                                            (f, p) <- fitFun t
-                                            insertFitness ec f p
-
     iterateFor 0  _    _ xs f = pure xs
     iterateFor n t0 maxT xs f = do xs' <- f n xs
                                    t1 <- io $ getPOSIXTime
@@ -226,13 +227,10 @@ egraphGP dataTrainVals dataTests args = do
     evolve xs' = do xs <- Prelude.mapM canonical xs'
                     parents <- tournament xs
                     offspring <- combine parents
-                    --applySingleMergeOnlyEqSat myCost rewritesParams >> cleanDB
                     if _nParams args == 0
-                       then runEqSat myCost rewritesWithConstant 1 >> cleanDB >> refitChanged
-                       else runEqSat myCost rewritesParams 1 >> cleanDB >> refitChanged
-                    canonical offspring >>= updateIfNothing fitFun
-                    canonical offspring
-                    --pure offspring
+                       then runEqSat myCost rewritesWithConstant 1 >> cleanDB
+                       else runEqSat myCost rewritesParams 1 >> cleanDB
+                    pure offspring
 
     tournament xs = do p1 <- applyTournament xs >>= canonical
                        p2 <- applyTournament xs >>= canonical
