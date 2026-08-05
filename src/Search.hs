@@ -133,10 +133,11 @@ egraphGP dataTrainVals dataTests args = do
 
     totSz <- gets (HashMap.size . _eNodeToEClass) -- (IntMap.size . _eClass)
     let full = totSz > max maxMem (_nPop args)
-    when full (cleanEGraph >> cleanDB)
+    cleanedIds <- if full then Just <$> cleanEGraph else pure Nothing
+    when full cleanDB
 
     newPop <- if _generational args 
-                 then Prelude.mapM canonical newPop' 
+                 then maybe (Prelude.mapM canonical newPop') pure cleanedIds 
                  else do 
                      let n_paretos = (_nPop args) `div` (_maxSize args)
                      pareto <- if (_useFracBayes args)
@@ -208,6 +209,7 @@ egraphGP dataTrainVals dataTests args = do
                      forM_ (Prelude.zip newIds (Prelude.reverse infos)) $ \(eId, info) -> do
                            let f = fromMaybe (-1.0/0.0) (_fitness info)
                            insertFitness eId f (_theta info)
+                     pure newIds
 
     rndTerm    = do coin <- toss
                     if coin || _nParams args == 0 then randomFrom terms else randomFrom params
