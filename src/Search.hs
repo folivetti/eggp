@@ -16,7 +16,7 @@ import Algorithm.EqSat.DB
 import Algorithm.SRTree.Likelihoods
 import Algorithm.SRTree.ModelSelection
 import Control.Lens (element, makeLenses, over, (&), (+~), (-~), (.~), (^.))
-import Control.Monad (foldM, forM_, forM, when, unless, filterM, (>=>), replicateM, replicateM_)
+import Control.Monad (foldM, forM_, forM, when, unless, filterM, (>=>), (<=<), replicateM, replicateM_)
 import Control.Monad.State.Strict
 
 import Data.HashMap.Strict (HashMap)
@@ -268,38 +268,56 @@ egraphGP dataTrainVals dataTests args = do
       p <- canonical p'
       root <- getBestENode p >>= canonize
       case root of
-        Param ix -> pure . Fix $ Param ix
-        Const x  -> pure . Fix $ Const x
-        Var   ix -> pure . Fix $ Var ix
-        Uni f t' -> do t <- canonical t'
-                       (Fix . Uni f) <$> getSubtree (pos-1) (sz+1) (Just $ Uni f) (parent:mGrandParents) cands t
-        Bin op l'' r'' ->
+        EParam ix -> pure . Fix $ Param ix
+        EConst x  -> pure . Fix $ Const x
+        EVar   ix -> pure . Fix $ Var ix
+        EUni f t' -> do t <- canonical t'
+                        (Fix . Uni f) <$> getSubtree (pos-1) (sz+1) (Just (\eid -> EUni f eid)) (parent:mGrandParents) cands t
+        EBin op l'' r'' ->
                       do l <- canonical l''
                          r <- canonical r''
                          szLft <- getSize l
                          szRgt <- getSize r
                          if szLft < pos
                            then do l' <- getBestExpr l
-                                   r' <- getSubtree (pos-szLft-1) (sz+szLft+1) (Just $ Bin op l) (parent:mGrandParents) cands r
+                                   r' <- getSubtree (pos-szLft-1) (sz+szLft+1) (Just (\eid -> EBin op l eid)) (parent:mGrandParents) cands r
                                    pure . Fix $ Bin op l' r'
-                           else do l' <- getSubtree (pos-1) (sz+szRgt+1) (Just (\t -> Bin op t r)) (parent:mGrandParents) cands l
+                           else do l' <- getSubtree (pos-1) (sz+szRgt+1) (Just (\eid -> EBin op eid r)) (parent:mGrandParents) cands l
                                    r' <- getBestExpr r
                                    pure . Fix $ Bin op l' r'
+        ENAry op xs -> do
+          cs  <- mapM canonical xs
+          szs <- mapM getSize cs
+          let totalSz = sum szs
+              goE [] [] _ _ = pure []
+              goE (c:cs) (s:szs) acc i
+                | s < pos - acc = do
+                    c' <- getBestExpr c
+                    cs' <- goE cs szs (acc + s) (i + 1)
+                    pure (c' : cs')
+                | otherwise = do
+                    c' <- getSubtree (pos - acc - 1) (sz + 1 + (totalSz - s)) (Just (\eid -> ENAry op (replaceAt i eid xs))) (parent:mGrandParents) cands c
+                    cs' <- mapM getBestExpr cs
+                    pure (c' : cs')
+          exprs <- goE cs szs 0 0
+          pure $ naryTree op exprs
 
     getAllSubClasses p' = do
       p  <- canonical p'
       en <- getBestENode p
       case en of
-        Bin _ l r -> do ls <- getAllSubClasses l
-                        rs <- getAllSubClasses r
-                        pure (p : (ls <> rs))
-        Uni _ t   -> (p:) <$> getAllSubClasses t
-        _         -> pure [p]
+        EBin _ l r -> do ls <- getAllSubClasses l
+                         rs <- getAllSubClasses r
+                         pure (p : (ls <> rs))
+        EUni _ t   -> (p:) <$> getAllSubClasses t
+        ENAry _ xs -> do xss <- mapM getAllSubClasses xs
+                         pure (p : concat xss)
+        _          -> pure [p]
 
     mutate p = do sz <- getSize p
                   coin <- rnd $ tossBiased (_pm args)
                   if coin
-                     then do pos <- rnd $ randomRange (0, sz-1)
+                     then do pos <- rnd $ randomRange (0, min sz maxSize - 1)
                              tree <- mutAt pos maxSize Nothing p
                              fromTree myCost (relabel tree) >>= canonical
                      else pure p
@@ -312,20 +330,21 @@ egraphGP dataTrainVals dataTests args = do
     peel (Fix (Const x)) = Const x
 
     mutAt :: Int -> Int -> Maybe (EClassId -> ENode) -> EClassId -> RndEGraph (Fix SRTree)
-    mutAt 0 sizeLeft Nothing       _ = (insertRndExpr sizeLeft rndTerm rndNonTerm >>= canonical) >>= getBestExpr -- we chose to mutate the root
+    mutAt 0 sizeLeft Nothing       _ = (insertRndExpr (max 1 sizeLeft) rndTerm rndNonTerm >>= canonical) >>= getBestExpr -- we chose to mutate the root
     mutAt 0 1        _             _ = rnd $ randomFrom terms -- we don't have size left
     mutAt 0 sizeLeft (Just parent) _ = do -- we reached the mutation place
-      ec    <- insertRndExpr sizeLeft rndTerm rndNonTerm >>= canonical -- create a random expression with the size limit
+      ec    <- insertRndExpr (max 1 sizeLeft) rndTerm rndNonTerm >>= canonical -- create a random expression with the size limit
       (Fix tree) <- getBestExpr ec           --
       root  <- getBestENode ec
       exist <- canonize (parent ec) >>= doesExist
       if exist
          -- the expression `parent ec` already exists, try to fix
-         then do let children = childrenOf root
+         then do let children = eChildren root
                  candidates <- case length children of
-                                0  -> filterM (checkToken parent . (replaceChildren children)) (Prelude.map peel terms)
-                                1 -> filterM (checkToken parent . (replaceChildren children)) uniNonTerms
-                                2 -> filterM (checkToken parent . (replaceChildren children)) binNonTerms
+                                0  -> filterM (checkToken parent <=< (toENode . replaceChildren children)) (Prelude.map peel terms)
+                                1 -> filterM (checkToken parent <=< (toENode . replaceChildren children)) uniNonTerms
+                                2 -> filterM (checkToken parent <=< (toENode . replaceChildren children)) binNonTerms
+                                _ -> pure []
                  if null candidates
                      then pure $ Fix tree -- there's no candidate, so we failed and admit defeat
                      else do newToken <- rnd (randomFrom candidates)
@@ -337,21 +356,37 @@ egraphGP dataTrainVals dataTests args = do
         p <- canonical p'
         root <- getBestENode p >>= canonize
         case root of
-          Param ix -> pure . Fix $ Param ix
-          Const x  -> pure . Fix $ Const x
-          Var   ix -> pure . Fix $ Var ix
-          Uni f t'  -> canonical t' >>= \t -> (Fix . Uni f) <$> mutAt (pos-1) (sizeLeft-1) (Just $ Uni f) t
-          Bin op ln rn -> do l <- canonical ln
-                             r <- canonical rn
-                             szLft <- getSize l
-                             szRgt <- getSize r
-                             if szLft < pos
-                                then do l' <- getBestExpr l
-                                        r' <- mutAt (pos-szLft-1) (sizeLeft-szLft-1) (Just $ Bin op l) r
-                                        pure . Fix $ Bin op l' r'
-                                else do l' <- mutAt (pos-1) (sizeLeft-szRgt-1) (Just (\t -> Bin op t r)) l
-                                        r' <- getBestExpr r
-                                        pure . Fix $ Bin op l' r'
+          EParam ix -> pure . Fix $ Param ix
+          EConst x  -> pure . Fix $ Const x
+          EVar   ix -> pure . Fix $ Var ix
+          EUni f t'  -> canonical t' >>= \t -> (Fix . Uni f) <$> mutAt (pos-1) (sizeLeft-1) (Just (\eid -> EUni f eid)) t
+          EBin op ln rn -> do l <- canonical ln
+                              r <- canonical rn
+                              szLft <- getSize l
+                              szRgt <- getSize r
+                              if szLft < pos
+                                 then do l' <- getBestExpr l
+                                         r' <- mutAt (pos-szLft-1) (sizeLeft-szLft-1) (Just (\eid -> EBin op l eid)) r
+                                         pure . Fix $ Bin op l' r'
+                                 else do l' <- mutAt (pos-1) (sizeLeft-szRgt-1) (Just (\eid -> EBin op eid r)) l
+                                         r' <- getBestExpr r
+                                         pure . Fix $ Bin op l' r'
+          ENAry op xs -> do
+            cs  <- mapM canonical xs
+            szs <- mapM getSize cs
+            let totalSz = sum szs
+                goE [] [] _ _ = pure []
+                goE (c:cs) (s:szs) acc i
+                  | s < pos - acc = do
+                      c' <- getBestExpr c
+                      cs' <- goE cs szs (acc + s) (i + 1)
+                      pure (c' : cs')
+                  | otherwise = do
+                      c' <- mutAt (pos - acc - 1) (sizeLeft - 1 - (totalSz - s)) (Just (\eid -> ENAry op (replaceAt i eid xs))) c
+                      cs' <- mapM getBestExpr cs
+                      pure (c' : cs')
+            exprs <- goE cs szs 0 0
+            pure $ naryTree op exprs
 
 
     printExpr :: Int -> EClassId -> RndEGraph [String]
@@ -425,3 +460,8 @@ egraphGP dataTrainVals dataTests args = do
 
     insertTerms =
         forM terms $ \t -> do fromTree myCost t >>= canonical
+
+    replaceAt :: Int -> EClassId -> [EClassId] -> [EClassId]
+    replaceAt 0 e (_:cs) = e : cs
+    replaceAt i e (c:cs) = c : replaceAt (i-1) e cs
+    replaceAt _ _ []     = []
