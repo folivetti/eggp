@@ -48,6 +48,8 @@ import Algorithm.EqSat (runEqSat,applySingleMergeOnlyEqSat)
 import GHC.IO (unsafePerformIO)
 import Control.Scheduler 
 import Control.Monad.IO.Unlift
+import Control.Exception (evaluate)
+import System.Timeout (timeout)
 import Data.SRTree (convertProtectedOps)
 
 import Data.SRTree.Random
@@ -95,6 +97,9 @@ data Args = Args
 
 csvHeader :: String
 csvHeader = "id,view,Expression,Numpy,Math,theta,size,loss_train,loss_val,loss_test,maxloss,R2_train,R2_val,R2_test,dl_train,dl_val,dl_test"
+
+forceSimp :: Fix SRTree -> Fix SRTree
+forceSimp t = let s = simplifyEqSatDefault t in countNodes s `seq` s
 
 egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> StateT EGraph (StateT StdGen IO) String
 egraphGP dataTrainVals dataTests args = do
@@ -392,7 +397,14 @@ egraphGP dataTrainVals dataTests args = do
     printExpr :: Int -> EClassId -> RndEGraph [String]
     printExpr ix ec = do
         thetas' <- getTheta ec
-        bestExpr <- (if _simplify args then simplifyEqSatDefault else id) <$> getBestExpr ec
+        bestExpr0 <- getBestExpr ec
+        bestExpr <- if _simplify args
+                      then do
+                        res <- io $ timeout (10 * 1000000) (evaluate (forceSimp bestExpr0))
+                        case res of
+                          Nothing -> pure bestExpr0
+                          Just s  -> pure s
+                      else pure bestExpr0
 
         let best'   = if shouldReparam then relabelParams bestExpr else relabelParamsOrder bestExpr
             nParams = countParamsUniq best'
