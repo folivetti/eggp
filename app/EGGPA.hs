@@ -54,7 +54,6 @@ import Data.SRTree.Datasets
 
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
-import Text.Read (readMaybe)
 import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
 
@@ -91,11 +90,11 @@ opt = Args
   <*> switch
        ( long "trace"
        <> help "print all evaluated expressions.")
-  <*> option auto
+  <*> option (maybeReader readLoss)
        ( long "loss"
-        <> value LeastSquares
+        <> value (NLL LeastSquares)
         <> showDefault
-        <> help "loss function: LeastSquares, Gaussian, Poisson, Bernoulli.")
+        <> help "loss function: MSE, LOG10, MAE, MAPE, Pinball, or a distribution (Gaussian, HGaussian, Poisson, Bernoulli, ROXY, LeastSquares).")
   <*> option auto
        ( long "opt-iter"
        <> value 30
@@ -180,7 +179,7 @@ opt = Args
 
 eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
 eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes =
-  case readMaybe loss of
+  case readLoss loss of
        Nothing -> pure $ "Invalid loss function " <> loss
        Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread
                  in eggp arg

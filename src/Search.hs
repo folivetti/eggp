@@ -63,7 +63,6 @@ import Foreign.C.String (CString, newCString, withCString, peekCString, peekCASt
 import Paths_eggp (version)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
-import Text.Read (readMaybe)
 import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
 import Data.Time.Clock.POSIX
@@ -75,7 +74,7 @@ data Args = Args
     _maxSize      :: Int,
     _folds        :: Int,
     _trace        :: Bool,
-    _distribution :: Distribution,
+    _distribution :: Loss,
     _optIter      :: Int,
     _optRepeat    :: Int,
     _nParams      :: Int,
@@ -172,7 +171,7 @@ egraphGP dataTrainVals dataTests args = do
     shouldReparam  = _nParams args == -1
     skipValEval    = _folds args == 1
     relabel        = if shouldReparam then relabelParams else relabelParamsOrder
-    terms          = if _distribution args == ROXY
+    terms          = if _distribution args == NLL ROXY
                           then (var 0 : params)
                           else [var ix | ix <- [0 .. nFeats-1]] -- <> params
     uniNonTerms = [t | t <- nonTerms, isUni t]
@@ -432,9 +431,9 @@ egraphGP dataTrainVals dataTests args = do
                 f_compl    = countNodes best' * log (countUniqueTokens best')
 
                 -- loss (NLL)
-                nll_train_ = compileLoss x (buildLoss (NLL distribution) n best') y mYErr theta
-                nll_val_   = compileLoss x_val (buildLoss (NLL distribution) n_val best') y_val mYErr_val theta
-                nll_te_    = compileLoss x_te (buildLoss (NLL distribution) n_te best') y_te mYErr_te theta
+                nll_train_ = compileLoss x (buildLoss distribution n best') y mYErr theta
+                nll_val_   = compileLoss x_val (buildLoss distribution n_val best') y_val mYErr_val theta
+                nll_te_    = compileLoss x_te (buildLoss distribution n_te best') y_te mYErr_te theta
 
                 -- R2
                 y_mean    = V.sum y / n
