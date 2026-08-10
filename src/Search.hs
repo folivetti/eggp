@@ -290,7 +290,8 @@ egraphGP dataTrainVals dataTests args = do
                            else do l' <- getSubtree (pos-1) (sz+szRgt+1) (Just (\eid -> EBin op eid r)) (parent:mGrandParents) cands l
                                    r' <- getBestExpr r
                                    pure . Fix $ Bin op l' r'
-        ENAry op xs -> do
+        ENAry op m -> do
+          let xs = expandedList m
           cs  <- mapM canonical xs
           szs <- mapM getSize cs
           let totalSz = sum szs
@@ -301,7 +302,7 @@ egraphGP dataTrainVals dataTests args = do
                     cs' <- goE cs szs (acc + s) (i + 1)
                     pure (c' : cs')
                 | otherwise = do
-                    c' <- getSubtree (pos - acc - 1) (sz + 1 + (totalSz - s)) (Just (\eid -> ENAry op (replaceAt i eid xs))) (parent:mGrandParents) cands c
+                    c' <- getSubtree (pos - acc - 1) (sz + 1 + (totalSz - s)) (Just (\eid -> ENAry op (imFromList (replaceAt i eid xs)))) (parent:mGrandParents) cands c
                     cs' <- mapM getBestExpr cs
                     pure (c' : cs')
           exprs <- goE cs szs 0 0
@@ -315,8 +316,8 @@ egraphGP dataTrainVals dataTests args = do
                          rs <- getAllSubClasses r
                          pure (p : (ls <> rs))
         EUni _ t   -> (p:) <$> getAllSubClasses t
-        ENAry _ xs -> do xss <- mapM getAllSubClasses xs
-                         pure (p : concat xss)
+        ENAry _ m -> do xss <- mapM getAllSubClasses (expandedList m)
+                        pure (p : concat xss)
         _          -> pure [p]
 
     mutate p = do sz <- getSize p
@@ -376,7 +377,8 @@ egraphGP dataTrainVals dataTests args = do
                                  else do l' <- mutAt (pos-1) (sizeLeft-szRgt-1) (Just (\eid -> EBin op eid r)) l
                                          r' <- getBestExpr r
                                          pure . Fix $ Bin op l' r'
-          ENAry op xs -> do
+          ENAry op m -> do
+            let xs = expandedList m
             cs  <- mapM canonical xs
             szs <- mapM getSize cs
             let totalSz = sum szs
@@ -387,7 +389,7 @@ egraphGP dataTrainVals dataTests args = do
                       cs' <- goE cs szs (acc + s) (i + 1)
                       pure (c' : cs')
                   | otherwise = do
-                      c' <- mutAt (pos - acc - 1) (sizeLeft - 1 - (totalSz - s)) (Just (\eid -> ENAry op (replaceAt i eid xs))) c
+                      c' <- mutAt (pos - acc - 1) (sizeLeft - 1 - (totalSz - s)) (Just (\eid -> ENAry op (imFromList (replaceAt i eid xs)))) c
                       cs' <- mapM getBestExpr cs
                       pure (c' : cs')
             exprs <- goE cs szs 0 0
