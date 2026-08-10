@@ -166,13 +166,21 @@ class EGGP(BaseEstimator, RegressorMixin):
               `recip` is the reciprocal (1/x)
               `cbrt` is the cubic root
 
-    loss : {"MSE", "Gaussian", "Bernoulli", "Poisson"}, default="MSE"
+    loss : {"MSE", "LOG10", "Gaussian", "Bernoulli", "Poisson", "MAE", "MAPE", "Pinball"}, default="MSE"
         Loss function used to evaluate the expressions:
         - MSE (mean squared error) should be used for regression problems.
+        - LOG10 (mean squared error in log10 space) for regression on log-spaced targets.
+        - MAE (mean absolute error) for regression robust to outliers.
+        - MAPE (mean absolute percentage error) for relative-error regression.
+        - Pinball for quantile regression (the quantile is given by `pinball_tau`).
         - Gaussian likelihood should be used for regression problem when you want to
           fit the error term.
         - Bernoulli likelihood should be used for classification problem.
         - Poisson likelihood should be used when the data distribution follows a Poisson.
+
+    pinball_tau : float, default=0.5
+        Quantile to minimize when `loss` is "Pinball". Must be a value
+        between 0 and 1.
 
     optIter : int, default=50
         Number of iterations for the parameter optimization.
@@ -224,12 +232,12 @@ class EGGP(BaseEstimator, RegressorMixin):
     >>> estimator = EGGP(loss="Bernoulli")
     >>> estimator.fit(X, y)
     """
-    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = "", useFracBayes = False):
+    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = "", useFracBayes = False, pinball_tau = 0.5):
         nts = "add,sub,mul,div,power,powerabs,\
                aq,abs,sin,cos,tan,sinh,cosh,tanh,\
                asin,acos,atan,asinh,acosh,atanh,sqrt,\
                sqrtabs,cbrt,square,log,logabs,exp,recip,cube"
-        losses = ["MSE", "LOG10", "Gaussian", "Bernoulli", "Poisson"]
+        losses = ["MSE", "LOG10", "Gaussian", "Bernoulli", "Poisson", "MAE", "MAPE", "Pinball"]
         if gen < 1:
             raise ValueError('gen should be greater than 1')
         if nPop < 1:
@@ -264,6 +272,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             raise TypeError('max_time must be an integer')
         if not isinstance(useFracBayes, bool):
             raise TypeError('useFracBayes must be a boolean')
+        if pinball_tau <= 0 or pinball_tau >= 1:
+            raise ValueError('pinball_tau must be a value between 0 and 1')
         self.gen = gen
         self.nPop = nPop
         self.maxSize = maxSize
@@ -284,6 +294,13 @@ class EGGP(BaseEstimator, RegressorMixin):
         self.loadFrom = loadFrom
         self.is_fitted_ = False
         self.useFracBayes = int(useFracBayes)
+        self.pinball_tau = pinball_tau
+
+    @property
+    def loss_arg(self):
+        if self.loss == "Pinball":
+            return f"Pinball {self.pinball_tau}"
+        return self.loss
 
     def combine_dataset(self, X, y, Xerr, yerr):
         ''' Combines the error information into a single dataset.
@@ -367,7 +384,7 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         dname = self.get_fname("", header)
 
-        csv_data = eggp_run_data(combined, [combined.shape[0]], ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
+        csv_data = eggp_run_data(combined, [combined.shape[0]], ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss_arg, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
@@ -402,7 +419,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         dname = self.get_fname("", header)
 
         csv_data = eggp_run_data(data, nrows, ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
-                            self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
+                            self.nonterminals, self.loss_arg, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
