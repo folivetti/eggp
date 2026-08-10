@@ -4,10 +4,9 @@ from threading import Lock
 from typing import Iterator, List
 import string
 from io import StringIO
-import tempfile
-import csv
 import os
 import multiprocessing
+import ctypes
 
 import numpy as np
 import pandas as pd
@@ -30,6 +29,25 @@ from ._binding import (
     unsafe_hs_eggp_init,
     unsafe_hs_eggp_exit,
 )
+
+_hs_eggp_run_data = None
+
+def _get_hs_eggp_run_data():
+    global _hs_eggp_run_data
+    if _hs_eggp_run_data is None:
+        lib = ctypes.CDLL(_binding.__file__)
+        lib.hs_eggp_run_data.argtypes = [
+            ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int),
+            ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_double, ctypes.c_double, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int,
+        ]
+        lib.hs_eggp_run_data.restype = ctypes.c_char_p
+        _hs_eggp_run_data = lib.hs_eggp_run_data
+    return _hs_eggp_run_data
 
 VERSION: str = "1.0.17"
 
@@ -64,7 +82,7 @@ def main(args: List[str] = []) -> int:
     # args often come from sys.argv which includes the program name at [0].
     # Strip it and prepend RTS flags so hs_init sees +RTS -N{numCores} -RTS.
     cli_args = args[1:] if args and not args[0].startswith('-') else args
-    rts_flags = ["+RTS", "-N4", "-s", "-RTS"]
+    rts_flags = ["+RTS", "-N4", "-RTS"]
     rts_args = ["eggp"] + rts_flags
     with hs_rts_init(rts_args + cli_args):
         return unsafe_hs_eggp_main()
@@ -72,6 +90,30 @@ def main(args: List[str] = []) -> int:
 def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int) -> str:
     with hs_rts_init():
         return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames, useFracBayes)
+
+def eggp_run_data(data: np.ndarray, nrows: List[int], header: str, params: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int) -> str:
+    ''' Runs eggp with the dataset passed directly as a contiguous double
+    array, bypassing the temp-CSV round trip.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        A C-contiguous float64 matrix (row-major) with all views concatenated
+        vertically.
+    nrows : list of int
+        Per-view row counts; its length is the number of datasets (views).
+    header : str
+        Comma-separated column names, in column order.
+    params : str
+        The same `:::target:features:y_err` suffix used by the file-based path
+        (e.g. ``get_fname("", header)``).
+    '''
+    data = np.ascontiguousarray(data, dtype=np.float64)
+    cdata = data.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+    cnrows = (ctypes.c_int * len(nrows))(*nrows)
+    with hs_rts_init():
+        out = _get_hs_eggp_run_data()(cdata, cnrows, len(nrows), data.shape[1], header.encode(), params.encode(), gen, nPop, maxSize, nTournament, pc, pm, nonterminals.encode(), loss.encode(), optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo.encode(), loadFrom.encode(), varnames.encode(), useFracBayes)
+    return out.decode("utf-8") if out is not None else ""
 
 def make_function(expression, loss="MSE"):
     def func(x, t):
@@ -323,18 +365,9 @@ class EGGP(BaseEstimator, RegressorMixin):
         else:
             varnames = ""
 
-        with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, prefix='datatemp_', suffix='.csv', dir=os.getcwd()) as temp_file:
-            writer = csv.writer(temp_file)
-            writer.writerow(header)
-            writer.writerows(combined)
-            dataset = temp_file.name
-        dname = self.get_fname(dataset, header)
+        dname = self.get_fname("", header)
 
-        try:
-            csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
-
-        finally:
-            os.remove(dataset)
+        csv_data = eggp_run_data(combined, [combined.shape[0]], ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
@@ -359,27 +392,17 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         combineds = [self.combine_dataset(X, y, Xerr, yerr) for X, y, Xerr, yerr in zip(Xs, ys, Xerrs, yerrs)]
         header = self.get_header(Xs[0].shape[1])
-        datasets = []
-        datasetsNames = []
         if isinstance(Xs[0], pd.DataFrame):
             varnames = ",".join(Xs[0].columns)
         else:
             varnames = ""
 
-        for combined in combineds:
-            with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, prefix='datatemp_', suffix='.csv', dir=os.getcwd()) as temp_file:
-                writer = csv.writer(temp_file)
-                writer.writerow(header)
-                writer.writerows(combined)
-                datasetsNames.append(temp_file.name)
-                datasets.append(self.get_fname(temp_file.name, header))
+        data = np.vstack(combineds)
+        nrows = [combined.shape[0] for combined in combineds]
+        dname = self.get_fname("", header)
 
-        try:
-            csv_data = eggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
-                                self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
-        finally:
-            for dataset in datasetsNames:
-                os.remove(dataset)
+        csv_data = eggp_run_data(data, nrows, ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
+                            self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())

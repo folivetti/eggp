@@ -54,6 +54,10 @@ import Data.SRTree.Datasets
 
 import Foreign.C (CInt (..), CDouble (..))
 import Foreign.C.String (CString, newCString, withCString, peekCString, peekCAString, newCAString)
+import Foreign.Marshal.Array (peekArray)
+import Foreign.Ptr (Ptr)
+import qualified Data.Vector.Unboxed as V
+import qualified Data.ByteString.Char8 as B
 import Paths_eggp (version)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
@@ -123,6 +127,22 @@ hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIte
   loadFrom' <- peekCString loadFrom
   varnames <- peekCString varnames'
   out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0)
+  newCString out
+
+foreign export ccall hs_eggp_run_data :: Ptr CDouble -> Ptr CInt -> CInt -> CInt -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
+
+hs_eggp_run_data :: Ptr CDouble -> Ptr CInt -> CInt -> CInt -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
+hs_eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' useFracBayes = do
+  nonterminals' <- peekCString nonterminals
+  loss' <- peekCString loss
+  dumpTo' <- peekCString dumpTo
+  loadFrom' <- peekCString loadFrom
+  varnames <- peekCString varnames'
+  header' <- peekCString header
+  params' <- peekCString params
+  out <- eggp_run_data dataPtr nrowsPtr (fromIntegral ndatasets) (fromIntegral ncols) header' params'
+           (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss'
+           (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0)
   newCString out
 
 opt :: Parser Args
@@ -254,13 +274,48 @@ eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter o
 
 eggp :: Args -> IO String
 eggp args = do
-  g    <- getStdGen
   let datasets = words (_dataset args)
   dataTrains' <- Prelude.mapM (flip loadTrainingOnly True) datasets -- load all datasets 
   dataTests <- if null (_testData args)
                 then pure dataTrains'
                 else Prelude.mapM (flip loadTrainingOnly True) $ words (_testData args)
+  eggpWithData args dataTrains' dataTests
 
+eggpWithData :: Args -> [DataSet] -> [DataSet] -> IO String
+eggpWithData args dataTrains' dataTests = do
+  g    <- getStdGen
   let (dataTrainVals, g') = runState (Prelude.mapM (`splitData` (_folds args)) dataTrains') g
       alg = evalStateT (egraphGP dataTrainVals dataTests args) emptyGraph
   evalStateT alg g'
+
+eggp_run_data :: Ptr CDouble -> Ptr CInt -> Int -> Int -> String -> String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
+eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes =
+  case readMaybe loss of
+       Nothing -> pure $ "Invalid loss function " <> loss
+       Just l -> do
+         dss <- buildDataSets dataPtr nrowsPtr ndatasets ncols header params
+         let arg = Args "" "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread
+         eggpWithData arg dss dss
+
+-- | Build a list of DataSets from a raw row-major double buffer.  The buffer
+--   contains all datasets concatenated; `nrows` gives the per-dataset row
+--   count.  Column selection and row ranges reuse the same `:::...` params
+--   parsing as the file-based `loadDataset`, so behavior is identical.
+buildDataSets :: Ptr CDouble -> Ptr CInt -> Int -> Int -> String -> String -> IO [DataSet]
+buildDataSets dataPtr nrowsPtr ndatasets ncols header params = do
+  nrows  <- map fromIntegral <$> peekArray ndatasets nrowsPtr
+  let totalRows = sum nrows
+  flat   <- V.fromList . map realToFrac <$> peekArray (totalRows * ncols) dataPtr
+  let (_, prms)     = splitFileNameParams params
+      headerMap     = zip (map B.strip (B.split ',' (B.pack header))) [0 .. ncols-1]
+      (ixs, iy, iyErr) = getColumns headerMap (prms !! 2) (prms !! 3) (prms !! 4)
+      allCols       = [ V.generate totalRows (\i -> flat V.! (i*ncols + j)) | j <- [0 .. ncols-1] ]
+      colAt off len j = V.slice off len (allCols !! j)
+      mkDs off nrows' =
+        let (st, end) = getRows (prms !! 0) (prms !! 1) nrows'
+            x  = map (colAt st end) ixs
+            y  = colAt st end iy
+            ye = if iyErr == -1 then Nothing else Just (colAt st end iyErr)
+        in (x, y, ye)
+      offs = init (scanl (+) 0 nrows)
+  pure $ zipWith mkDs offs nrows
