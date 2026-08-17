@@ -1,4 +1,4 @@
-pipx >=1.11.1, <2
+pipx >=1.16.7, <2
 delvewheel
 auditwheel
 cibuildwheel==3.1.3
