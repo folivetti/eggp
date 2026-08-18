@@ -182,8 +182,8 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: >
             dnf install -y gcc gcc-c++ make libpq-devel cmake curl git &&
             ARCH=$(uname -m) &&
-            if [ "$ARCH" = "aarch64" ]; then GHCUP_ARCH="AArch64-linux"; else GHCUP_ARCH="X86_64-linux"; fi &&
-            curl -L https://github.com/haskell/ghcup-hs/releases/latest/download/ghcup-$GHCUP_ARCH -o /usr/local/bin/ghcup &&
+            if [ "$ARCH" = "aarch64" ]; then GHCU_ARCH="aarch64"; else GHCU_ARCH="x86_64"; fi &&
+            curl -L https://github.com/haskell/ghcup-hs/releases/download/v0.2.6.2/${GHCU_ARCH}-linux-ghcup-0.2.6.2 -o /usr/local/bin/ghcup &&
             chmod +x /usr/local/bin/ghcup &&
             ghcup install ghc 9.14.1 &&
             ghcup install cabal 3.16 &&
