@@ -195,7 +195,12 @@ jobs:
             git clone --depth 1 https://github.com/stevengj/nlopt.git /tmp/nlopt &&
             cd /tmp/nlopt && mkdir build && cd build &&
             cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DLIB_SUFFIX=64 &&
-            make -j$(nproc) && make install && ldconfig
+            make -j$(nproc) && make install && ldconfig &&
+            ln -sf /usr/pgsql-16/lib/libpq.so* /usr/local/lib64/ &&
+            ln -sf /usr/pgsql-16/lib/libpq.a /usr/local/lib64/ &&
+            ln -sf /usr/pgsql-16/include/libpq-fe.h /usr/local/include/ &&
+            ln -sf /usr/pgsql-16/include/pg_config.h /usr/local/include/ &&
+            ln -sf /usr/pgsql-16/include/postgresql /usr/local/include/postgresql
           CIBW_ENVIRONMENT_LINUX: 'PATH=/root/.ghcup/bin:/usr/pgsql-16/bin:$PATH LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib LD_LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib C_INCLUDE_PATH=/usr/local/include:/usr/pgsql-16/include PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig:/usr/pgsql-16/lib/pkgconfig'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
       
