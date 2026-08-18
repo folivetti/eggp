@@ -181,15 +181,13 @@ jobs:
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
           CIBW_BEFORE_ALL_LINUX: >
             dnf install -y gcc gcc-c++ make libpq-devel cmake curl git &&
-            curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org -o /tmp/ghcup-install.sh &&
-            chmod +x /tmp/ghcup-install.sh &&
-            BOOTSTRAP_HASKELL_NONINTERACTIVE=1
-            BOOTSTRAP_HASKELL_GHC_VERSION=9.14.1
-            BOOTSTRAP_HASKELL_CABAL_VERSION=3.16
-            BOOTSTRAP_HASKELL_INSTALL_BASE=/usr/local
-            BOOTSTRAP_HASKELL_INSTALL_BIN=/usr/local/bin
-            BOOTSTRAP_HASKELL_ADJUST_BASHRC=0
-            /tmp/ghcup-install.sh &&
+            ARCH=$(uname -m) &&
+            if [ "$ARCH" = "aarch64" ]; then GHCUP_ARCH="AArch64-linux"; else GHCUP_ARCH="X86_64-linux"; fi &&
+            curl -L https://github.com/haskell/ghcup-hs/releases/latest/download/ghcup-$GHCUP_ARCH -o /usr/local/bin/ghcup &&
+            chmod +x /usr/local/bin/ghcup &&
+            ghcup install ghc 9.14.1 &&
+            ghcup install cabal 3.16 &&
+            ghcup set ghc 9.14.1 &&
             git clone --depth 1 https://github.com/stevengj/nlopt.git /tmp/nlopt &&
             cd /tmp/nlopt && mkdir build && cd build &&
             cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DLIB_SUFFIX=64 &&
