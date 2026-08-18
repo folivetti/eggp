@@ -81,6 +81,8 @@ skip = [
   # PyPy builds do not work.
   "pp*",
 ]
+manylinux-x86_64-image = "manylinux_2_34"
+manylinux-aarch64-image = "manylinux_2_34"
 
 [tool.cibuildwheel.windows]
 repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path C:\\nlopt\\bin"
