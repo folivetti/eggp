@@ -51,26 +51,26 @@ jobs:
           #    runner: "ubuntu-latest"
           #    arch: "i686"
           #    plat: "manylinux"
-          - os:
-              name: "Linux"
-              runner: "ubuntu-latest"
-              arch: "x86_64"
-              plat: "manylinux"
+          #- os:
+          #    name: "Linux"
+          #    runner: "ubuntu-latest"
+          #    arch: "x86_64"
+          #    plat: "manylinux"
           #- os:
           #    name: "Linux"
           #    runner: "ubuntu-latest"
           #    arch: "x86_64"
           #    plat: "musllinux"
-          - os:
-              name: "macOS"
-              runner: "macos-15-intel"
-              arch: "x86_64"
-              plat: "macosx"
-          - os:
-              name: "macOS"
-              runner: "macos-15"
-              arch: "arm64"
-              plat: "macosx"
+          #- os:
+          #    name: "macOS"
+          #    runner: "macos-15-intel"
+          #    arch: "x86_64"
+          #    plat: "macosx"
+          #- os:
+          #    name: "macOS"
+          #    runner: "macos-15"
+          #    arch: "arm64"
+          #    plat: "macosx"
           #- os:
           #    name: "Windows"
           #    runner: "windows-latest"
