@@ -95,11 +95,18 @@ jobs:
       - # Required to run job via act: https://github.com/nektos/act
         run: pip install -r "./requirements-ci.txt"
 
-      - # 19-05-2023:
-        # Required to build the wheels on macOS and Windows, but not on Linux,
-        # as Linux builds are run in containers, where GHC and Cabal are built
-        # by the `./scripts/before-all.sh` scripts.
-        if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
+      - if: matrix.job.os.name == 'macOS'
+        name: Install GHC and Cabal via ghcup
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then GHCUP_ARCH="aarch64-apple-darwin"; else GHCUP_ARCH="x86_64-apple-darwin"; fi
+          curl -L https://github.com/haskell/ghcup-hs/releases/download/v0.2.6.2/${GHCUP_ARCH}-ghcup-0.2.6.2 -o /usr/local/bin/ghcup
+          chmod +x /usr/local/bin/ghcup
+          ghcup install ghc 9.14.1
+          ghcup install cabal 3.16
+          ghcup set ghc 9.14.1
+
+      - if: matrix.job.os.name == 'Windows'
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.DEFAULT_GHC_VERSION }}
