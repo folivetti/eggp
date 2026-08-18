@@ -176,12 +176,32 @@ opt = Args
        <> value MultiThread
        <> showDefault
        <> help "AD backend: MultiThread, SingleThread, or Accelerate." )
+  <*> strOption
+       ( long "db-file"
+       <> value ""
+       <> showDefault
+       <> help "SQLite database file for persistent e-graph (empty = in-memory)." )
+  <*> strOption
+       ( long "db-dataset"
+       <> value ""
+       <> showDefault
+       <> help "Dataset name for DB mode (empty = derive from CSV filename)." )
+  <*> option auto
+       ( long "db-cache-size"
+       <> value 100000
+       <> showDefault
+       <> help "Max entries in the local fitness cache." )
+  <*> option auto
+       ( long "db-flush-every"
+       <> value 0
+       <> showDefault
+       <> help "Flush e-graph to DB every N generations (0 = only at end)." )
 
-eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
-eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes =
+eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> String -> String -> Int -> Int -> IO String
+eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes dbFile dbDataset dbCacheSz dbFlushEvery =
   case readLoss loss of
        Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread
+       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread dbFile dbDataset dbCacheSz dbFlushEvery
                  in eggp arg
 
 eggp :: Args -> IO String

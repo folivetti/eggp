@@ -1,5 +1,6 @@
 packages: .
          ../srtree
+         ../srtree-db
          ../accelerate-llvm-native-debug
 
 allow-newer: *

@@ -4,6 +4,7 @@
 {-# LANGUAGE  OverloadedStrings #-}
 {-# LANGUAGE  BangPatterns #-}
 {-# LANGUAGE  TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE  RankNTypes #-}
 
 module Search where
 
@@ -67,6 +68,15 @@ import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
 import Data.Time.Clock.POSIX
 
+import Algorithm.EqSat.Storage.SQLite (saveGraph)
+import Algorithm.EqSat.Storage.Query (getOrCreateDataset, readDatasetFit, writeDatasetFit, expressionEclass)
+import Algorithm.EqSat.Storage.Types (enodeKey, parseTheta, serializeTheta)
+import Algorithm.EqSat.Storage.Backend (SqlBackend)
+import qualified Database.SQLite3 as SQLite
+import qualified Data.Text as T
+import Control.Exception (bracket)
+import System.FilePath (takeFileName)
+
 data Args = Args
   { _dataset      :: String,
     _testData     :: String,
@@ -90,7 +100,11 @@ data Args = Args
     _maxtime      :: Int,
     _varnames     :: String,
     _useFracBayes :: Bool,
-    _backend      :: ADBackEnd
+    _backend      :: ADBackEnd,
+    _dbFile       :: String,
+    _dbDataset    :: String,
+    _dbCacheSz    :: Int,
+    _dbFlushEvery :: Int
   }
   deriving (Show)
 
@@ -104,14 +118,19 @@ egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> StateT EGraph (StateT S
 egraphGP dataTrainVals dataTests args = do
   when ((not.null) (_loadFrom args)) $ (io $ BS.readFile (_loadFrom args)) >>= \eg -> put (decode eg)
 
+  -- Load fitness cache from DB if in DB mode
+  fitCache <- if not (null (_dbFile args))
+              then io $ loadFitnessCache (_dbFile args) (dbDatasetName args)
+              else pure HashMap.empty
+
   insertTerms
   unevalInit <- gets (IntSet.toList . _unevaluated . _eDB)
-  fitBatch True fitFun unevalInit
+  fitBatchCached fitCache True fitFun unevalInit
 
   t0 <- io $ getPOSIXTime
   
   pop <- replicateM (_nPop args) $ insertRndExpr (_maxSize args) rndTerm rndNonTerm >>= canonical
-  fitBatch False fitFun pop
+  fitBatchCached fitCache False fitFun pop
 
   output <- if _trace args 
                then forM (Prelude.zip [0..] pop) $ uncurry printExpr
@@ -121,15 +140,32 @@ egraphGP dataTrainVals dataTests args = do
       mTime = if _maxtime args < 0 then Nothing else Just (fromIntegral $ _maxtime args - 5) -- add 5 seconds slack
 
   (finalPop, finalOut, _) <- iterateFor (_gens args) t0 mTime (pop, output, _nPop args) $ \it (ps', out, curIx) -> do
-    newPop' <- replicateM (_nPop args) (evolve ps')
+    newPop' <- replicateM (_nPop args) (if not (null (_dbFile args)) then evolveDB ps' else evolve ps')
 
     -- Batch-fit the eqsat-flagged refits (force) and the new offspring
     -- (updateIfNothing semantics) concurrently, before any fitness-based
     -- selection so Pareto ranking sees fresh fitness values.
     refitIds <- gets (IntSet.toList . _refits . _eDB)
     modify' $ over (eDB . refits) (const IntSet.empty)
-    fitBatch True fitFun refitIds
-    fitBatch False fitFun newPop'
+    fitBatchCached fitCache True fitFun refitIds
+    fitBatchCached fitCache False fitFun newPop'
+
+    -- Store newly fitted fitness in DB
+    when (not (null (_dbFile args))) $ do
+      forM_ refitIds $ \eid -> do
+        mf <- getFitness eid
+        case mf of
+          Just f  -> do thetas <- getTheta eid
+                        let theta = if null thetas then V.empty else head thetas
+                        io $ storeFitnessDB (_dbFile args) (dbDatasetName args) eid f theta
+          Nothing -> pure ()
+      forM_ newPop' $ \eid -> do
+        mf <- getFitness eid
+        case mf of
+          Just f  -> do thetas <- getTheta eid
+                        let theta = if null thetas then V.empty else head thetas
+                        io $ storeFitnessDB (_dbFile args) (dbDatasetName args) eid f theta
+          Nothing -> pure ()
 
     out' <- if _trace args
               then forM (Prelude.zip [curIx..] newPop') $ uncurry printExpr
@@ -139,6 +175,11 @@ egraphGP dataTrainVals dataTests args = do
     let full = totSz > max maxMem (_nPop args)
     cleanedIds <- if full then Just <$> cleanEGraph else pure Nothing
     when full cleanDB
+
+    -- Periodic sync to DB
+    when (not (null (_dbFile args)) && _dbFlushEvery args > 0 && it `mod` _dbFlushEvery args == 0) $ do
+      eg <- get
+      io $ syncEGraphDB (_dbFile args) (dbDatasetName args) eg
 
     newPop <- if _generational args 
                  then maybe (Prelude.mapM canonical newPop') pure cleanedIds 
@@ -155,6 +196,11 @@ egraphGP dataTrainVals dataTests args = do
                                else pure $ Prelude.take remainder newPop'
                      Prelude.mapM canonical (pareto <> lft)
     pure (newPop, out <> out', curIx + (_nPop args)) 
+
+  -- Final sync to DB
+  when (not (null (_dbFile args))) $ do
+    eg <- get
+    io $ syncEGraphDB (_dbFile args) (dbDatasetName args) eg
 
   when ((not.null) (_dumpTo args)) $ get >>= (io . BS.writeFile (_dumpTo args) . encode )
   pf <- if _trace args 
@@ -238,6 +284,14 @@ egraphGP dataTrainVals dataTests args = do
                        else runEqSat myCost rewritesParams 1 >> cleanDB
                     pure offspring
 
+    evolveDB xs' = do xs <- Prelude.mapM canonical xs'
+                      parents <- tournament xs
+                      offspring <- combineDB parents
+                      if _nParams args == 0
+                         then runEqSat myCost rewritesWithConstant 1 >> cleanDB
+                         else runEqSat myCost rewritesParams 1 >> cleanDB
+                      pure offspring
+
     tournament xs = do p1 <- applyTournament xs >>= canonical
                        p2 <- applyTournament xs >>= canonical
                        pure (p1, p2)
@@ -249,6 +303,8 @@ egraphGP dataTrainVals dataTests args = do
 
     combine (p1, p2) = (crossover p1 p2 >>= mutate) >>= canonical
 
+    combineDB (p1, p2) = (crossoverDB p1 p2 >>= mutateDB) >>= canonical
+
     crossover p1 p2 = do sz <- getSize p1
                          coin <- rnd $ tossBiased (_pc args)
                          if sz == 1 || not coin
@@ -257,6 +313,22 @@ egraphGP dataTrainVals dataTests args = do
                                     cands <- getAllSubClasses p2
                                     tree <- getSubtree pos 0 Nothing [] cands p1
                                     fromTree myCost (relabel tree) >>= canonical
+
+    crossoverDB p1 p2 = do sz <- getSize p1
+                           coin <- rnd $ tossBiased (_pc args)
+                           if sz == 1 || not coin
+                              then rnd (randomFrom [p1, p2])
+                              else do pos <- rnd $ randomRange (1, sz-1)
+                                      cands <- getAllSubClasses p2
+                                      tree <- getSubtree pos 0 Nothing [] cands p1
+                                      eid <- fromTree myCost (relabel tree) >>= canonical
+                                      -- Check if this expression already exists in the DB
+                                      en <- getBestENode eid >>= canonize
+                                      let key = T.pack (enodeKey en)
+                                      inDB <- io $ expressionInDB (_dbFile args) key
+                                      if inDB
+                                        then rnd (randomFrom [p1, p2])  -- already explored: fall back
+                                        else pure eid
 
     getSubtree :: Int -> Int -> Maybe (EClassId -> ENode) -> [Maybe (EClassId -> ENode)] -> [EClassId] -> EClassId -> RndEGraph (Fix SRTree)
     getSubtree 0 sz (Just parent) mGrandParents cands p' = do
@@ -326,6 +398,21 @@ egraphGP dataTrainVals dataTests args = do
                              tree <- mutAt pos maxSize Nothing p
                              fromTree myCost (relabel tree) >>= canonical
                      else pure p
+
+    mutateDB p = do sz <- getSize p
+                    coin <- rnd $ tossBiased (_pm args)
+                    if coin
+                       then do pos <- rnd $ randomRange (0, min sz maxSize - 1)
+                               tree <- mutAt pos maxSize Nothing p
+                               eid <- fromTree myCost (relabel tree) >>= canonical
+                               -- Check if this expression already exists in the DB
+                               en <- getBestENode eid >>= canonize
+                               let key = T.pack (enodeKey en)
+                               inDB <- io $ expressionInDB (_dbFile args) key
+                               if inDB
+                                 then pure p  -- already explored: keep original
+                                 else pure eid
+                       else pure p
 
     peel :: Fix SRTree -> SRTree ()
     peel (Fix (Bin op l r)) = Bin op () ()
@@ -478,3 +565,83 @@ egraphGP dataTrainVals dataTests args = do
     replaceAt 0 e (_:cs) = e : cs
     replaceAt i e (c:cs) = c : replaceAt (i-1) e cs
     replaceAt _ _ []     = []
+
+-- ---------------------------------------------------------------------------
+-- DB helpers (used when _dbFile is non-empty)
+-- ---------------------------------------------------------------------------
+
+-- | Derive the dataset name for the DB: use _dbDataset if set, else the CSV basename.
+dbDatasetName :: Args -> String
+dbDatasetName args
+  | not (null (_dbDataset args)) = _dbDataset args
+  | otherwise                    = takeFileName (_dataset args)
+
+-- | Open a SQLite DB, run an action, close.  SQLite-only (no Postgres).
+withSqliteDB :: String -> (forall b. SqlBackend b => b -> IO a) -> IO a
+withSqliteDB path k = bracket (SQLite.open (T.pack path)) SQLite.close k
+
+-- | Load fitness cache from DB: eclass id -> (fitness, theta_text).
+-- When the e-graph structure is loaded via --load-from, e-class IDs are
+-- preserved so this cache is directly usable.  For cross-run keyed reuse
+-- (different e-class IDs), expression_index would be needed — left as TODO.
+loadFitnessCache :: String -> String -> IO (HashMap Int (Double, V.Vector Double))
+loadFitnessCache "" _ = pure HashMap.empty
+loadFitnessCache dbFile dataset = withSqliteDB dbFile $ \db -> do
+  mdsid <- getOrCreateDataset db dataset
+  fits <- readDatasetFit db mdsid
+  pure $ HashMap.fromList
+    [ (eid, (f, parseThetaVec th))
+    | (eid, (Just f, _, _, th)) <- fits
+    , not (T.null th) ]
+  where
+    parseThetaVec th = case parseTheta (T.unpack th) of
+      []    -> V.empty
+      (v:_) -> v
+
+-- | Check if an expression's enode key exists in expression_index table.
+expressionInDB :: String -> T.Text -> IO Bool
+expressionInDB "" _ = pure False
+expressionInDB dbFile key
+  | T.null key = pure False
+  | otherwise  = withSqliteDB dbFile $ \db -> do
+      meid <- expressionEclass db key
+      pure (meid /= Nothing)
+
+-- | Store fitness in DB after evaluation.
+storeFitnessDB :: String -> String -> EClassId -> Double -> V.Vector Double -> IO ()
+storeFitnessDB "" _ _ _ _ = pure ()
+storeFitnessDB dbFile dataset eid fit theta
+  = withSqliteDB dbFile $ \db -> do
+      dsid <- getOrCreateDataset db dataset
+      writeDatasetFit db dsid eid (Just fit) Nothing (T.pack (serializeTheta [theta])) 0
+
+-- | Sync in-memory e-graph to DB (full save for resident graphs).
+syncEGraphDB :: String -> String -> EGraph -> IO ()
+syncEGraphDB "" _ _ = pure ()
+syncEGraphDB dbFile dataset eg
+  = withSqliteDB dbFile $ \db -> do
+      dsid <- getOrCreateDataset db dataset
+      _ <- saveGraph db dsid eg
+      pure ()
+
+-- | Like fitBatch, but checks the fitness cache first.
+-- For each e-class whose ID is in the cache, insertFitness is called directly
+-- (skipping the expensive NLopt optimization).  Uncached e-classes go through
+-- the normal fitFun path via the original fitBatch.
+fitBatchCached :: HashMap.HashMap Int (Double, V.Vector Double)
+               -> Bool
+               -> (Fix SRTree -> RndEGraph (Double, [Target]))
+               -> [EClassId]
+               -> RndEGraph ()
+fitBatchCached cache force fitFun ecs0 = do
+  ecs <- Prelude.mapM canonical ecs0
+  -- Phase 1: fill fitness from cache for e-classes that have a cache hit
+  forM_ ecs $ \ec -> do
+    mf <- getFitness ec
+    when (force || mf == Nothing) $
+      case HashMap.lookup ec cache of
+        Just (fit, thetas) -> insertFitness ec fit [thetas]
+        Nothing            -> pure ()
+  -- Phase 2: run the original fitBatch — it will skip e-classes that now
+  -- have fitness (from the cache or from a previous run).
+  fitBatch force fitFun ecs0

@@ -116,23 +116,25 @@ hs_eggp_main =
                                    \ https://arxiv.org/abs/2501.17848\n"
            <> header "eggp - E-graph Genetic Programming for Symbolic Regression." )
 
-foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
+foreign export ccall hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> CString -> CString -> CInt -> CInt -> IO CString
 
-hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
-hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' useFracBayes = do
+hs_eggp_run :: CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> CString -> CString -> CInt -> CInt -> IO CString
+hs_eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' useFracBayes dbFile' dbDataset' dbCacheSz dbFlushEvery = do
   dataset' <- peekCString dataset
   nonterminals' <- peekCString nonterminals
   loss' <- peekCString loss
   dumpTo' <- peekCString dumpTo
   loadFrom' <- peekCString loadFrom
   varnames <- peekCString varnames'
-  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0)
+  dbFile <- peekCString dbFile'
+  dbDataset <- peekCString dbDataset'
+  out  <- eggp_run dataset' (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss' (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0) dbFile dbDataset (fromIntegral dbCacheSz) (fromIntegral dbFlushEvery)
   newCString out
 
-foreign export ccall hs_eggp_run_data :: Ptr CDouble -> Ptr CInt -> CInt -> CInt -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
+foreign export ccall hs_eggp_run_data :: Ptr CDouble -> Ptr CInt -> CInt -> CInt -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> CString -> CString -> CInt -> CInt -> IO CString
 
-hs_eggp_run_data :: Ptr CDouble -> Ptr CInt -> CInt -> CInt -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> IO CString
-hs_eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' useFracBayes = do
+hs_eggp_run_data :: Ptr CDouble -> Ptr CInt -> CInt -> CInt -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CDouble -> CDouble -> CString -> CString -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CString -> CString -> CString -> CInt -> CString -> CString -> CInt -> CInt -> IO CString
+hs_eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames' useFracBayes dbFile' dbDataset' dbCacheSz dbFlushEvery = do
   nonterminals' <- peekCString nonterminals
   loss' <- peekCString loss
   dumpTo' <- peekCString dumpTo
@@ -140,9 +142,11 @@ hs_eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSiz
   varnames <- peekCString varnames'
   header' <- peekCString header
   params' <- peekCString params
+  dbFile <- peekCString dbFile'
+  dbDataset <- peekCString dbDataset'
   out <- eggp_run_data dataPtr nrowsPtr (fromIntegral ndatasets) (fromIntegral ncols) header' params'
            (fromIntegral gens) (fromIntegral nPop) (fromIntegral maxSize) (fromIntegral nTournament) (realToFrac pc) (realToFrac pm) nonterminals' loss'
-           (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0)
+           (fromIntegral optIter) (fromIntegral optRepeat) (fromIntegral nParams) (fromIntegral folds) (fromIntegral maxTime) (simplify /= 0) (trace /= 0) (generational /= 0) dumpTo' loadFrom' varnames (useFracBayes /= 0) dbFile dbDataset (fromIntegral dbCacheSz) (fromIntegral dbFlushEvery)
   newCString out
 
 opt :: Parser Args
@@ -264,12 +268,32 @@ opt = Args
        <> value MultiThread
        <> showDefault
        <> help "AD backend: MultiThread, SingleThread, or Accelerate." )
+  <*> strOption
+       ( long "db-file"
+       <> value ""
+       <> showDefault
+       <> help "SQLite database file for persistent e-graph (empty = in-memory)." )
+  <*> strOption
+       ( long "db-dataset"
+       <> value ""
+       <> showDefault
+       <> help "Dataset name for DB mode (empty = derive from CSV filename)." )
+  <*> option auto
+       ( long "db-cache-size"
+       <> value 100000
+       <> showDefault
+       <> help "Max entries in the local fitness cache." )
+  <*> option auto
+       ( long "db-flush-every"
+       <> value 0
+       <> showDefault
+       <> help "Flush e-graph to DB every N generations (0 = only at end)." )
 
-eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
-eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes =
+eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> String -> String -> Int -> Int -> IO String
+eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes dbFile dbDataset dbCacheSz dbFlushEvery =
   case readLoss loss of
        Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread
+       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread dbFile dbDataset dbCacheSz dbFlushEvery
                  in eggp arg
 
 eggp :: Args -> IO String
@@ -288,13 +312,13 @@ eggpWithData args dataTrains' dataTests = do
       alg = evalStateT (egraphGP dataTrainVals dataTests args) emptyGraph
   evalStateT alg g'
 
-eggp_run_data :: Ptr CDouble -> Ptr CInt -> Int -> Int -> String -> String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> IO String
-eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes =
+eggp_run_data :: Ptr CDouble -> Ptr CInt -> Int -> Int -> String -> String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> String -> String -> Int -> Int -> IO String
+eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes dbFile dbDataset dbCacheSz dbFlushEvery =
   case readLoss loss of
        Nothing -> pure $ "Invalid loss function " <> loss
        Just l -> do
          dss <- buildDataSets dataPtr nrowsPtr ndatasets ncols header params
-         let arg = Args "" "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread
+         let arg = Args "" "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread dbFile dbDataset dbCacheSz dbFlushEvery
          eggpWithData arg dss dss
 
 -- | Build a list of DataSets from a raw row-major double buffer.  The buffer
