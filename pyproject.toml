@@ -80,13 +80,7 @@ skip = [
   # 18-04-2023:
   # PyPy builds do not work.
   "pp*",
-  "cp314-*"
 ]
-manylinux-aarch64-image = "folivetti/manylinux_2_28_ghc9121_aarch64"
-manylinux-i686-image = "folivetti/manylinux2014_ghc9121_i686"
-manylinux-x86_64-image = "folivetti/manylinux_2_28_ghc9121_x86_64"
-#manylinux-x86_64-image = "folivetti/manylinux2014_ghc9121_x86_64"
-musllinux-x86_64-image = "folivetti/musllinux_1_1_ghc9121_x86_64"
 
 [tool.cibuildwheel.windows]
 repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel} --add-path C:\\nlopt\\bin"
@@ -123,7 +117,7 @@ extras =
 commands =
   {env_python} -m pytest {posargs}
 
-[testenv:build-py{39,310,311,312,313}-{lin,mac,win}]
+[testenv:build-py{39,310,311,312,313,314}-{lin,mac,win}]
 deps =
   build
   auditwheel; sys_platform == 'linux'

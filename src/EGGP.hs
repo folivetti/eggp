@@ -267,7 +267,7 @@ opt = Args
        ( long "backend"
        <> value MultiThread
        <> showDefault
-       <> help "AD backend: MultiThread, SingleThread, or Accelerate." )
+       <> help "AD backend: MultiThread or SingleThread." )
   <*> strOption
        ( long "db-file"
        <> value ""
