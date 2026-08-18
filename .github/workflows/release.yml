@@ -187,12 +187,12 @@ jobs:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
           CIBW_BEFORE_ALL_LINUX: >
-            dnf install -y gcc gcc-c++ make cmake curl git gmp-devel libffi-devel ncurses-devel zlib-devel &&
+            dnf install -y gcc gcc-c++ make cmake curl git gmp-devel libffi-devel ncurses-devel zlib-devel openssl-devel krb5-devel libxml2-devel &&
             ARCH=$(uname -m) &&
             if [ "$ARCH" = "aarch64" ]; then PG_ARCH="aarch64"; else PG_ARCH="x86_64"; fi &&
             dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-${PG_ARCH}/pgdg-redhat-repo-latest.noarch.rpm &&
             dnf -qy module disable postgresql &&
-            dnf install -y postgresql16-devel &&
+            dnf install -y postgresql16-devel postgresql16-libs &&
             if [ "$ARCH" = "aarch64" ]; then GHCU_ARCH="aarch64"; else GHCU_ARCH="x86_64"; fi &&
             curl -L https://github.com/haskell/ghcup-hs/releases/download/v0.2.6.2/${GHCU_ARCH}-linux-ghcup-0.2.6.2 -o /usr/local/bin/ghcup &&
             chmod +x /usr/local/bin/ghcup &&
@@ -205,9 +205,12 @@ jobs:
             make -j$(nproc) && make install && ldconfig &&
             ln -sf /usr/pgsql-16/lib/libpq.so* /usr/local/lib64/ &&
             ln -sf /usr/pgsql-16/lib/libpq.a /usr/local/lib64/ &&
+            ln -sf /usr/pgsql-16/lib/pg_config* /usr/local/lib64/ &&
             ln -sf /usr/pgsql-16/include/libpq-fe.h /usr/local/include/ &&
             ln -sf /usr/pgsql-16/include/pg_config.h /usr/local/include/ &&
-            ln -sf /usr/pgsql-16/include/postgresql /usr/local/include/postgresql
+            ln -sf /usr/pgsql-16/include/postgresql /usr/local/include/postgresql &&
+            ln -sf /usr/pgsql-16/lib/libpgcommon* /usr/local/lib64/ &&
+            ldconfig
           CIBW_ENVIRONMENT_LINUX: 'PATH=/root/.ghcup/bin:/usr/pgsql-16/bin:$PATH LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib LD_LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib C_INCLUDE_PATH=/usr/local/include:/usr/pgsql-16/include PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig:/usr/pgsql-16/lib/pkgconfig'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
       
