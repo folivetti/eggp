@@ -180,8 +180,12 @@ jobs:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
           CIBW_BEFORE_ALL_LINUX: >
-            dnf install -y gcc gcc-c++ make libpq-devel cmake curl git gmp-devel libffi-devel ncurses-devel zlib-devel &&
+            dnf install -y gcc gcc-c++ make cmake curl git gmp-devel libffi-devel ncurses-devel zlib-devel &&
             ARCH=$(uname -m) &&
+            if [ "$ARCH" = "aarch64" ]; then PG_ARCH="aarch64"; else PG_ARCH="x86_64"; fi &&
+            dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-${PG_ARCH}/pgdg-redhat-repo-latest.noarch.rpm &&
+            dnf -qy module disable postgresql &&
+            dnf install -y postgresql16-devel &&
             if [ "$ARCH" = "aarch64" ]; then GHCU_ARCH="aarch64"; else GHCU_ARCH="x86_64"; fi &&
             curl -L https://github.com/haskell/ghcup-hs/releases/download/v0.2.6.2/${GHCU_ARCH}-linux-ghcup-0.2.6.2 -o /usr/local/bin/ghcup &&
             chmod +x /usr/local/bin/ghcup &&
@@ -192,7 +196,7 @@ jobs:
             cd /tmp/nlopt && mkdir build && cd build &&
             cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DLIB_SUFFIX=64 &&
             make -j$(nproc) && make install && ldconfig
-          CIBW_ENVIRONMENT_LINUX: 'PATH=/root/.ghcup/bin:$PATH LIBRARY_PATH=/usr/local/lib64 LD_LIBRARY_PATH=/usr/local/lib64 C_INCLUDE_PATH=/usr/local/include PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig'
+          CIBW_ENVIRONMENT_LINUX: 'PATH=/root/.ghcup/bin:$PATH LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib LD_LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib C_INCLUDE_PATH=/usr/local/include:/usr/pgsql-16/include PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig:/usr/pgsql-16/lib/pkgconfig'
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
       
       - # Build source distribution (sdist)
