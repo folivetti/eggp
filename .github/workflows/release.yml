@@ -167,7 +167,7 @@ jobs:
           echo "CPATH=/usr/local/include:/opt/homebrew/include" >> $GITHUB_ENV
           echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
           echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
-          echo "PATH=/opt/homebrew/opt/libpq/bin:$PATH" >> $GITHUB_ENV
+          echo "PATH=/usr/local/opt/libpq/bin:/opt/homebrew/opt/libpq/bin:$PATH" >> $GITHUB_ENV
           
       - # 19-06-2023:
         # Required to build aarch64 wheels.
