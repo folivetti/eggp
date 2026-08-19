@@ -92,7 +92,7 @@ foreign-library _binding
 
 executable eggp
   import:           warnings
-  ghc-options:      -threaded -rtsopts -O2 -fllvm -pgmlo opt-20 -pgmlc llc-20 -optlo-O3 -optlc-mcpu=native -mavx2 -mfma -fspec-constr -fmax-simplifier-iterations=20 -fexpose-all-unfoldings -optc-O3 -optc-mavx2 -optc-mfma
+  ghc-options:      -threaded -rtsopts -O2 -mavx2 -mfma -fspec-constr -fmax-simplifier-iterations=20 -fexpose-all-unfoldings -optc-O3 -optc-mavx2 -optc-mfma
   main-is:          Main.hs
   hs-source-dirs:   app, src
   other-modules:
