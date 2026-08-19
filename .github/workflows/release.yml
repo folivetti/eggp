@@ -159,7 +159,7 @@ jobs:
         name: Install Homebrew dependencies
         run: |
           brew update
-          brew install nlopt
+          brew install nlopt libpq
       - if: matrix.job.os.name == 'macOS'
         name: Configure environment variables
         run: |
@@ -167,6 +167,7 @@ jobs:
           echo "CPATH=/usr/local/include:/opt/homebrew/include" >> $GITHUB_ENV
           echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
           echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+          echo "PATH=/opt/homebrew/opt/libpq/bin:$PATH" >> $GITHUB_ENV
           
       - # 19-06-2023:
         # Required to build aarch64 wheels.
