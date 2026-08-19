@@ -105,6 +105,7 @@ jobs:
           ghcup install ghc 9.14.1
           ghcup install cabal 3.16
           ghcup set ghc 9.14.1
+          ~/.ghcup/bin/cabal update
           echo "$HOME/.ghcup/bin" >> $GITHUB_PATH
 
       - if: matrix.job.os.name == 'Windows'
