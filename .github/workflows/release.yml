@@ -41,21 +41,21 @@ jobs:
     strategy:
       matrix:
         job:
-          - os:
-              name: "Linux"
-              runner: "ubuntu-24.04-arm"
-              arch: "aarch64"
-              plat: "manylinux"
+          #- os:
+          #    name: "Linux"
+          #    runner: "ubuntu-24.04-arm"
+          #    arch: "aarch64"
+          #    plat: "manylinux"
           #- os:
           #    name: "Linux"
           #    runner: "ubuntu-latest"
           #    arch: "i686"
           #    plat: "manylinux"
-          - os:
-              name: "Linux"
-              runner: "ubuntu-latest"
-              arch: "x86_64"
-              plat: "manylinux"
+          #- os:
+          #    name: "Linux"
+          #    runner: "ubuntu-latest"
+          #    arch: "x86_64"
+          #    plat: "manylinux"
           #- os:
           #    name: "Linux"
           #    runner: "ubuntu-latest"
