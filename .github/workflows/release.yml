@@ -166,7 +166,7 @@ jobs:
           echo "LIBRARY_PATH=/usr/local/lib:/opt/homebrew/lib" >> $GITHUB_ENV
           echo "CPATH=/usr/local/include:/opt/homebrew/include" >> $GITHUB_ENV
           echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
-          echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> $GITHUB_ENV
           echo "PATH=/usr/local/opt/libpq/bin:/opt/homebrew/opt/libpq/bin:$PATH" >> $GITHUB_ENV
           
       - # 19-06-2023:
@@ -218,7 +218,7 @@ jobs:
             ln -sf /usr/pgsql-16/lib/libpgcommon* /usr/local/lib64/ &&
             ldconfig
           CIBW_ENVIRONMENT_LINUX: 'PATH=/root/.ghcup/bin:/usr/pgsql-16/bin:$PATH LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib LD_LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib C_INCLUDE_PATH=/usr/local/include:/usr/pgsql-16/include PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig:/usr/pgsql-16/lib/pkgconfig'
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-15' && '15.0' || '15.0' }}
       
       - # Build source distribution (sdist)
         run: |
