@@ -50,7 +50,7 @@ def _get_hs_eggp_run_data():
         _hs_eggp_run_data = lib.hs_eggp_run_data
     return _hs_eggp_run_data
 
-VERSION: str = "1.0.17"
+VERSION: str = "2.0.0"
 
 
 _hs_rts_init: bool = False
