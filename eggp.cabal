@@ -36,7 +36,7 @@ common warnings
 
 foreign-library _binding
   import:           warnings
-  ghc-options:      -threaded
+  ghc-options:      -threaded -rtsopts -O2 -fspec-constr -fmax-simplifier-iterations=20 -fexpose-all-unfoldings -optc-O3
   type:             native-shared
 
   -- 01-04-2023:
@@ -92,7 +92,7 @@ foreign-library _binding
 
 executable eggp
   import:           warnings
-  ghc-options:      -threaded -rtsopts -O2 -fspec-constr -fmax-simplifier-iterations=20 -fexpose-all-unfoldings -optc-O3 -optc-mavx2 -optc-mfma
+  ghc-options:      -threaded -rtsopts -O2 -fspec-constr -fmax-simplifier-iterations=20 -fexpose-all-unfoldings -optc-O3
   main-is:          Main.hs
   hs-source-dirs:   app, src
   other-modules:
