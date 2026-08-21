@@ -5,7 +5,7 @@ cabal-version: 2.2
 -- see: https://github.com/sol/hpack
 
 name:           eggp
-version:        2.0.0
+version:        2.1.1
 synopsis:       A general library to work with Symbolic Regression expression trees.
 description:    A Symbolic Regression Tree data structure to work with mathematical expressions with support to first order derivative and simplification;
 category:       Math, Data, Data Structures
@@ -73,7 +73,6 @@ foreign-library _binding
     , mtl >=2.2 && <2.4
     , optparse-applicative >=0.17 && <0.20
     , random >=1.2 && <1.4
-    , scheduler >=2.0.0.1 && <3
     , split >=0.2.5 && <0.3
     , srtree >= 3.0.0.0
     , srtree-db >= 0.1.0.0
@@ -81,8 +80,6 @@ foreign-library _binding
     , text >= 1.2 && < 2.2
     , statistics >=0.16.2.1 && <0.17
     , transformers >=0.6.1.0 && <0.7
-    , unliftio >=0.2.10 && <1
-    , unliftio-core >=0.2.1 && <1
     , unordered-containers ==0.2.*
     , vector >=0.12 && <0.14
     , zlib >=0.6.3 && <0.8
@@ -117,7 +114,6 @@ executable eggp
     , mtl >=2.2 && <2.4
     , optparse-applicative >=0.17 && <0.19
     , random >=1.2 && <1.4
-    , scheduler >=2.0.0.1 && <3
     , split >=0.2.5 && <0.3
     , srtree >= 3.0.0.0
     , srtree-db >= 0.1.0.0
@@ -125,8 +121,6 @@ executable eggp
     , text >= 1.2 && < 2.2
     , statistics >=0.16.2.1 && <0.17
     , transformers >=0.6.1.0 && <0.7
-    , unliftio >=0.2.10 && <1
-    , unliftio-core >=0.2.1 && <1
     , unordered-containers ==0.2.*
     , vector >=0.12 && <0.14
     , zlib >=0.6.3 && <0.8

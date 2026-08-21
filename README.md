@@ -91,7 +91,7 @@ To install eggp you'll need:
 - `libz`
 - `libnlopt`
 - `libgmp`
-- `ghc-9.6.6`
+- `ghc-9.14.1`
 - `cabal` or `stack`
 
 ### Method 1: PIP

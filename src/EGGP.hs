@@ -40,9 +40,6 @@ import qualified Data.ByteString.Lazy as BS
 
 import Algorithm.EqSat (runEqSat,applySingleMergeOnlyEqSat)
 
-import GHC.IO (unsafePerformIO)
-import Control.Scheduler 
-import Control.Monad.IO.Unlift
 import Data.SRTree (convertProtectedOps)
 import Options.Applicative as Opt hiding (Const)
 

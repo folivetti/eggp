@@ -49,9 +49,6 @@ import Data.List.Split (splitOn)
 
 import Algorithm.EqSat (runEqSat,applySingleMergeOnlyEqSat)
 
-import GHC.IO (unsafePerformIO)
-import Control.Scheduler 
-import Control.Monad.IO.Unlift
 import Control.Exception (evaluate)
 import System.Timeout (timeout)
 import Data.SRTree (convertProtectedOps)
