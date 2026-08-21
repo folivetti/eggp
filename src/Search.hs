@@ -16,6 +16,8 @@ import Algorithm.EqSat.Info
 import Algorithm.EqSat.DB
 import Algorithm.SRTree.Likelihoods
 import Algorithm.SRTree.ModelSelection
+import Algorithm.SRTree.Compile (compileTree, EvalTree(..))
+import Algorithm.SRTree.ConfidenceIntervals (CIType(..), PType(..), paramCI, getAllProfiles, getStatsFromModel, CI(..), BasicStats(..))
 import Control.Lens (element, makeLenses, over, (&), (+~), (-~), (.~), (^.))
 import Control.Monad (foldM, forM_, forM, when, unless, filterM, (>=>), (<=<), replicateM, replicateM_)
 import Control.Monad.State.Strict
@@ -34,6 +36,7 @@ import qualified Data.HashSet as Set
 import Data.List ( sort, maximumBy, intercalate, sortOn, intersperse, nub, zip4 )
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
+import qualified Data.Map as Map
 import qualified Data.Sequence as FingerTree
 import Data.Function ( on )
 import qualified Data.Foldable as Foldable
@@ -108,8 +111,9 @@ data Args = Args
   }
   deriving (Show)
 
-csvHeader :: String
-csvHeader = "id,view,Expression,Numpy,Math,theta,size,loss_train,loss_val,loss_test,maxloss,R2_train,R2_val,R2_test,dl_train,dl_val,dl_test"
+csvHeader :: Int -> String
+csvHeader maxParams = "id,view,Expression,Numpy,Math,theta,size,loss_train,loss_val,loss_test,maxloss,R2_train,R2_val,R2_test,dl_train,dl_val,dl_test"
+                   <> concatMap (\i -> ",t" <> show i <> "_lower,t" <> show i <> "_upper") [0 .. maxParams - 1]
 
 forceSimp :: Fix SRTree -> Fix SRTree
 forceSimp t = let s = simplifyEqSatDefault t in countNodes s `seq` s
@@ -148,6 +152,9 @@ egraphGP dataTrainVals dataTests args = do
     refitIds <- gets (IntSet.toList . _refits . _eDB)
     modify' $ over (eDB . refits) (const IntSet.empty)
     fitBatchCached fitCache True fitFun refitIds
+    refitIds <- gets (IntSet.toList . _refits . _eDB)
+    modify' $ over (eDB . refits) (const IntSet.empty)
+    fitBatchCached fitCache True fitFun refitIds
     fitBatchCached fitCache False fitFun newPop'
 
     -- Store newly fitted fitness in DB
@@ -171,7 +178,7 @@ egraphGP dataTrainVals dataTests args = do
               then forM (Prelude.zip [curIx..] newPop') $ uncurry printExpr
               else pure []
 
-    totSz <- gets (HashMap.size . _eNodeToEClass) -- (IntMap.size . _eClass)
+    totSz <- gets (HashMap.size . _eNodeToEClass)
     let full = totSz > max maxMem (_nPop args)
     cleanedIds <- if full then Just <$> cleanEGraph else pure Nothing
     when full cleanDB
@@ -188,13 +195,12 @@ egraphGP dataTrainVals dataTests args = do
                      pareto <- if (_useFracBayes args)
                                  then getParetoFront
                                  else concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
-                     -- pareto <- concat <$> (forM [1 .. _maxSize args] $ \n -> getTopFitEClassWithSize n 2)
-                     -- pareto <- getParetoFront
                      let remainder = _nPop args - length pareto
                      lft <- if full
                                then getTopFitEClassThat remainder (const True)
                                else pure $ Prelude.take remainder newPop'
                      Prelude.mapM canonical (pareto <> lft)
+
     pure (newPop, out <> out', curIx + (_nPop args)) 
 
   -- Final sync to DB
@@ -206,7 +212,8 @@ egraphGP dataTrainVals dataTests args = do
   pf <- if _trace args 
            then pure finalOut 
            else paretoFront fitFun (_maxSize args) printExpr
-  pure $ unlines (csvHeader : concat pf) 
+  let maxP = if _nParams args == -1 then nFeats else _nParams args
+  pure $ unlines (csvHeader maxP : concat pf) 
   where
     maxSize = (_maxSize args)
     maxMem = 2000000 -- running 1 iter of eqsat for each new individual will consume ~3GB
@@ -276,21 +283,33 @@ egraphGP dataTrainVals dataTests args = do
                                                     then pure xs
                                                     else iterateFor (n-1) t1 maxT' xs' f
 
-    evolve xs' = do xs <- Prelude.mapM canonical xs'
-                    parents <- tournament xs
-                    offspring <- combine parents
-                    if _nParams args == 0
-                       then runEqSat myCost rewritesWithConstant 1 >> cleanDB
-                       else runEqSat myCost rewritesParams 1 >> cleanDB
-                    pure offspring
+    evolve xs' = do
+                xs <- Prelude.mapM canonical xs'
+                parents <- tournament xs
+                offspring <- combine parents
+                if _nParams args == 0
+                   then runEqSat myCost rewritesWithConstant 1 >> cleanDB
+                   else runEqSat myCost rewritesParams 1 >> cleanDB
+                -- Each offspring runs an independent 1-iteration eqsat on a shared
+                -- e-graph. The mark-on-attempt seen-set would otherwise grow with the
+                -- whole graph (an O(seen) exclude materialization per matcher call,
+                -- the source of the progressive slowdown), so clear it between offspring.
+                modify' $ over (eDB . seenMatches) (const Map.empty)
+                pure offspring
 
-    evolveDB xs' = do xs <- Prelude.mapM canonical xs'
-                      parents <- tournament xs
-                      offspring <- combineDB parents
-                      if _nParams args == 0
-                         then runEqSat myCost rewritesWithConstant 1 >> cleanDB
-                         else runEqSat myCost rewritesParams 1 >> cleanDB
-                      pure offspring
+    evolveDB xs' = do
+                xs <- Prelude.mapM canonical xs'
+                parents <- tournament xs
+                offspring <- combineDB parents
+                if _nParams args == 0
+                   then runEqSat myCost rewritesWithConstant 1 >> cleanDB
+                   else runEqSat myCost rewritesParams 1 >> cleanDB
+                -- Each offspring runs an independent 1-iteration eqsat on a shared
+                -- e-graph. The mark-on-attempt seen-set would otherwise grow with the
+                -- whole graph (an O(seen) exclude materialization per matcher call,
+                -- the source of the progressive slowdown), so clear it between offspring.
+                modify' $ over (eDB . seenMatches) (const Map.empty)
+                pure offspring
 
     tournament xs = do p1 <- applyTournament xs >>= canonical
                        p2 <- applyTournament xs >>= canonical
@@ -509,7 +528,7 @@ egraphGP dataTrainVals dataTests args = do
                 distribution = _distribution args
 
                 expr      = paramsToConst (V.toList theta) best'
-                showNA z  = if isNaN z then "" else show z
+                showNA z  = if isNaN z || isInfinite z then "NA" else show z
 
                 n          = fromIntegral (V.length y) :: Double
                 n_val      = fromIntegral (V.length y_val) :: Double
@@ -552,10 +571,24 @@ egraphGP dataTrainVals dataTests args = do
                 varnames    = _varnames args
                 showExprFun = if null varnames then showExpr else showExprWithVars (splitOn "," varnames)
                 showLatexFun = if null varnames then showLatex else showLatexWithVars (splitOn "," varnames)
+
+                -- Compute profile-likelihood CIs
+                nSamples = V.length y
+                dist = case distribution of { NLL d -> d; _ -> Gaussian }
+                et = compileTree dist x y mYErr best'
+                stats = getStatsFromModel dist mYErr x y best' theta
+                profiles = getAllProfiles Constrained et theta (_stdErr stats) [] 0.05
+                ciVals = paramCI (Profile stats profiles) nSamples theta 0.05
+                maxP = if _nParams args == -1 then nFeats else _nParams args
+                ciStr = intercalate ","
+                      $ Prelude.map (\(CI _ l h) -> show l <> "," <> show h) ciVals
+                      ++ Prelude.replicate (2 * (maxP - length ciVals)) ""
+
             pure $ show ix <> "," <> show view <> "," <> showExprFun expr <> "," <> "\"" <> showPython best' <> "\","
                            <> "\"$$" <> showLatexFun best' <> "$$\","
                            <> thetaStr <> "," <> show (countNodes $ convertProtectedOps expr)
                            <> "," <> vals
+                           <> "," <> ciStr
         pure ts
 
     insertTerms =
