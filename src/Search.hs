@@ -134,7 +134,7 @@ egraphGP dataTrainVals dataTests args = do
   fitBatchCached fitCache False fitFun pop
 
   output <- if _trace args 
-               then forM (Prelude.zip [0..] pop) $ uncurry printExpr
+               then forM (Prelude.zip [0..] pop) $ uncurry (printExpr nFeats)
                else pure []
 
   let m = (_nPop args) `div` (_maxSize args)
@@ -172,7 +172,7 @@ egraphGP dataTrainVals dataTests args = do
           Nothing -> pure ()
 
     out' <- if _trace args
-              then forM (Prelude.zip [curIx..] newPop') $ uncurry printExpr
+              then forM (Prelude.zip [curIx..] newPop') $ uncurry (printExpr nFeats)
               else pure []
 
     totSz <- gets (HashMap.size . _eNodeToEClass)
@@ -206,11 +206,17 @@ egraphGP dataTrainVals dataTests args = do
     io $ syncEGraphDB (_dbFile args) (dbDatasetName args) eg
 
   when ((not.null) (_dumpTo args)) $ get >>= (io . BS.writeFile (_dumpTo args) . encode )
+
+  -- When _nParams is -1, compute the actual max number of params across the
+  -- Pareto front so the CSV header allocates enough CI columns.
+  actualMaxP <- if _nParams args == -1
+                  then computeMaxP (_maxSize args) (_distribution args) nFeats
+                  else pure (_nParams args)
+  let printExpr' = printExpr actualMaxP
   pf <- if _trace args 
            then pure finalOut 
-           else paretoFront fitFun (_maxSize args) printExpr
-  let maxP = if _nParams args == -1 then nFeats else _nParams args
-  pure $ unlines (csvHeader maxP : concat pf) 
+           else paretoFront fitFun (_maxSize args) printExpr'
+  pure $ unlines (csvHeader actualMaxP : concat pf) 
   where
     maxSize = (_maxSize args)
     maxMem = 2000000 -- running 1 iter of eqsat for each new individual will consume ~3GB
@@ -498,8 +504,8 @@ egraphGP dataTrainVals dataTests args = do
             pure $ naryTree op exprs
 
 
-    printExpr :: Int -> EClassId -> RndEGraph [String]
-    printExpr ix ec = do
+    printExpr :: Int -> Int -> EClassId -> RndEGraph [String]
+    printExpr actualMaxP ix ec = do
         thetas' <- getTheta ec
         bestExpr0 <- getBestExpr ec
         bestExpr <- if _simplify args
@@ -570,16 +576,19 @@ egraphGP dataTrainVals dataTests args = do
                 showLatexFun = if null varnames then showLatex else showLatexWithVars (splitOn "," varnames)
 
                 -- Compute profile-likelihood CIs
+                -- Bates (1985) profile likelihood works for MSE/least-squares:
+                --   2*(MSE(theta) - MSE(theta_hat)) <= chi2_1
+                -- For NLL losses, the same formula applies with the NLL.
                 nSamples = V.length y
-                dist = case distribution of { NLL d -> d; _ -> Gaussian }
+                dist = case distribution of { NLL d -> d; MSE -> LeastSquares; LOG10 -> LeastSquares; MAE -> LeastSquares; MAPE -> LeastSquares; Pinball _ -> LeastSquares; _ -> Gaussian }
                 et = compileTree dist x y mYErr best'
                 stats = getStatsFromModel dist mYErr x y best' theta
-                profiles = getAllProfiles Constrained et theta (_stdErr stats) [] 0.05
+                profiles = getAllProfiles Bates et theta (_stdErr stats) [] 0.05
                 ciVals = paramCI (Profile stats profiles) nSamples theta 0.05
-                maxP = if _nParams args == -1 then nFeats else _nParams args
+                maxPExpr = actualMaxP
                 ciStr = intercalate ","
-                      $ Prelude.map (\(CI _ l h) -> show l <> "," <> show h) ciVals
-                      ++ Prelude.replicate (2 * (maxP - length ciVals)) ""
+                      $ Prelude.map (\(CI _ l h) -> showNA l <> "," <> showNA h) ciVals
+                      ++ Prelude.replicate (2 * (maxPExpr - length ciVals)) ""
 
             pure $ show ix <> "," <> show view <> "," <> showExprFun expr <> "," <> "\"" <> showPython best' <> "\","
                            <> "\"$$" <> showLatexFun best' <> "$$\","
@@ -595,6 +604,28 @@ egraphGP dataTrainVals dataTests args = do
     replaceAt 0 e (_:cs) = e : cs
     replaceAt i e (c:cs) = c : replaceAt (i-1) e cs
     replaceAt _ _ []     = []
+
+    -- | Walk the Pareto front to find the actual max number of params
+    -- (model params + distribution-specific params) across all sizes.
+    computeMaxP :: Int -> Loss -> Int -> RndEGraph Int
+    computeMaxP maxSize' dist nFeats' = go 1 0
+      where
+        distExtra = case dist of
+                      NLL Gaussian -> 1
+                      NLL ROXY     -> 3
+                      _            -> 0
+        go n acc
+          | n > maxSize' = pure acc
+          | otherwise = do
+              ecList <- getBestExprWithSize n
+              case ecList of
+                ((ec, _):_) -> do
+                  ec' <- canonical ec
+                  bestExpr <- getBestExpr ec'
+                  let best' = if shouldReparam then relabelParams bestExpr else relabelParamsOrder bestExpr
+                      nP = countParamsUniq best' + distExtra
+                  go (n+1) (max acc nP)
+                _ -> go (n+1) acc
 
 -- ---------------------------------------------------------------------------
 -- DB helpers (used when _dbFile is non-empty)
