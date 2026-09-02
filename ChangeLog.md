@@ -1,5 +1,18 @@
 # Changelog for eggp
 
+## 2.2.0
+
+- **3x speedup with multithreading** (-N4): parallel tree generation via
+  `mapConcurrently` on e-graph snapshots; batch eqsat after all offspring
+  inserted; fixed duplicate refitIds bug
+- **eggp DB mode**: external SQLite database for fitness caching, expression
+  deduplication, and periodic persistence (`--db-file`, `--db-dataset`,
+  `--db-cache-size`, `--db-flush-every`)
+- `crossoverDB`/`mutateDB` check both in-memory e-graph and DB for
+  already-seen expressions
+- Python API: `dbFile`, `dbDataset`, `dbCacheSize`, `dbFlushEvery` parameters
+- SWIG binding updated for DB mode parameters
+
 ## 2.1.2
 
 - Fixed profile-likelihood CI distribution mapping: non-NLL losses (MSE, LOG10,

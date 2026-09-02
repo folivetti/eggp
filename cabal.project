@@ -1,6 +1,4 @@
 packages: .
-         ../srtree
-         ../srtree-db
 
 allow-newer: *
 

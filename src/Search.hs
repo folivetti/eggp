@@ -49,6 +49,8 @@ import Data.List.Split (splitOn)
 
 import Algorithm.EqSat (runEqSat,applySingleMergeOnlyEqSat)
 
+import Control.Concurrent (getNumCapabilities)
+import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
 import System.Timeout (timeout)
 import Data.SRTree (convertProtectedOps)
@@ -102,6 +104,7 @@ data Args = Args
     _useFracBayes :: Bool,
     _backend      :: ADBackEnd,
     _dbFile       :: String,
+    _dbFitFile    :: String,
     _dbDataset    :: String,
     _dbCacheSz    :: Int,
     _dbFlushEvery :: Int
@@ -120,8 +123,8 @@ egraphGP dataTrainVals dataTests args = do
   when ((not.null) (_loadFrom args)) $ (io $ BS.readFile (_loadFrom args)) >>= \eg -> put (decode eg)
 
   -- Load fitness cache from DB if in DB mode
-  fitCache <- if not (null (_dbFile args))
-              then io $ loadFitnessCache (_dbFile args) (dbDatasetName args)
+  fitCache <- if not (null (_dbFitFile args))
+              then io $ loadFitnessCache (_dbFitFile args) (dbDatasetName args)
               else pure HashMap.empty
 
   insertTerms
@@ -141,34 +144,38 @@ egraphGP dataTrainVals dataTests args = do
       mTime = if _maxtime args < 0 then Nothing else Just (fromIntegral $ _maxtime args - 5) -- add 5 seconds slack
 
   (finalPop, finalOut, _) <- iterateFor (_gens args) t0 mTime (pop, output, _nPop args) $ \it (ps', out, curIx) -> do
-    newPop' <- replicateM (_nPop args) (if not (null (_dbFile args)) then evolveDB ps' else evolve ps')
+    -- Phase 1: Generate offspring trees in parallel (read-only on e-graph)
+    trees <- generateTrees ps'
+    -- Phase 2: Batch insert all trees into the e-graph (sequential)
+    newPop' <- Prelude.mapM (\t -> fromTree myCost (relabel t) >>= canonical) trees
+
+    -- Single batch eqsat pass over all new classes
+    if _nParams args == 0
+       then runEqSat myCost rewritesWithConstant 1 >> cleanDB
+       else runEqSat myCost rewritesParams 1 >> cleanDB
+    modify' $ over (eDB . seenMatches) (const Map.empty)
 
     -- Batch-fit the eqsat-flagged refits (force) and the new offspring
-    -- (updateIfNothing semantics) concurrently, before any fitness-based
-    -- selection so Pareto ranking sees fresh fitness values.
-    refitIds <- gets (IntSet.toList . _refits . _eDB)
-    modify' $ over (eDB . refits) (const IntSet.empty)
-    fitBatchCached fitCache True fitFun refitIds
     refitIds <- gets (IntSet.toList . _refits . _eDB)
     modify' $ over (eDB . refits) (const IntSet.empty)
     fitBatchCached fitCache True fitFun refitIds
     fitBatchCached fitCache False fitFun newPop'
 
     -- Store newly fitted fitness in DB
-    when (not (null (_dbFile args))) $ do
+    when (not (null (_dbFitFile args))) $ do
       forM_ refitIds $ \eid -> do
         mf <- getFitness eid
         case mf of
           Just f  -> do thetas <- getTheta eid
                         let theta = if null thetas then V.empty else head thetas
-                        io $ storeFitnessDB (_dbFile args) (dbDatasetName args) eid f theta
+                        io $ storeFitnessDB (_dbFitFile args) (dbDatasetName args) eid f theta
           Nothing -> pure ()
       forM_ newPop' $ \eid -> do
         mf <- getFitness eid
         case mf of
           Just f  -> do thetas <- getTheta eid
                         let theta = if null thetas then V.empty else head thetas
-                        io $ storeFitnessDB (_dbFile args) (dbDatasetName args) eid f theta
+                        io $ storeFitnessDB (_dbFitFile args) (dbDatasetName args) eid f theta
           Nothing -> pure ()
 
     out' <- if _trace args
@@ -290,28 +297,12 @@ egraphGP dataTrainVals dataTests args = do
                 xs <- Prelude.mapM canonical xs'
                 parents <- tournament xs
                 offspring <- combine parents
-                if _nParams args == 0
-                   then runEqSat myCost rewritesWithConstant 1 >> cleanDB
-                   else runEqSat myCost rewritesParams 1 >> cleanDB
-                -- Each offspring runs an independent 1-iteration eqsat on a shared
-                -- e-graph. The mark-on-attempt seen-set would otherwise grow with the
-                -- whole graph (an O(seen) exclude materialization per matcher call,
-                -- the source of the progressive slowdown), so clear it between offspring.
-                modify' $ over (eDB . seenMatches) (const Map.empty)
                 pure offspring
 
     evolveDB xs' = do
                 xs <- Prelude.mapM canonical xs'
                 parents <- tournament xs
                 offspring <- combineDB parents
-                if _nParams args == 0
-                   then runEqSat myCost rewritesWithConstant 1 >> cleanDB
-                   else runEqSat myCost rewritesParams 1 >> cleanDB
-                -- Each offspring runs an independent 1-iteration eqsat on a shared
-                -- e-graph. The mark-on-attempt seen-set would otherwise grow with the
-                -- whole graph (an O(seen) exclude materialization per matcher call,
-                -- the source of the progressive slowdown), so clear it between offspring.
-                modify' $ over (eDB . seenMatches) (const Map.empty)
                 pure offspring
 
     tournament xs = do p1 <- applyTournament xs >>= canonical
@@ -344,13 +335,70 @@ egraphGP dataTrainVals dataTests args = do
                                       cands <- getAllSubClasses p2
                                       tree <- getSubtree pos 0 Nothing [] cands p1
                                       eid <- fromTree myCost (relabel tree) >>= canonical
-                                      -- Check if this expression already exists in the DB
                                       en <- getBestENode eid >>= canonize
                                       let key = T.pack (enodeKey en)
-                                      inDB <- io $ expressionInDB (_dbFile args) key
+                                      inDB <- io $ expressionInDB (_dbFitFile args) key
                                       if inDB
-                                        then rnd (randomFrom [p1, p2])  -- already explored: fall back
+                                        then rnd (randomFrom [p1, p2])
                                         else pure eid
+
+    -- | Like crossover but returns Fix SRTree instead of inserting into the e-graph.
+    -- All operations are read-only on the e-graph snapshot.
+    crossoverTree p1 p2 = do sz <- getSize p1
+                             coin <- rnd $ tossBiased (_pc args)
+                             if sz == 1 || not coin
+                                then do p <- rnd (randomFrom [p1, p2])
+                                        getBestExpr p
+                                else do pos <- rnd $ randomRange (1, sz-1)
+                                        cands <- getAllSubClasses p2
+                                        getSubtree pos 0 Nothing [] cands p1
+
+    -- | Like mutate but works on Fix SRTree directly without writing to the e-graph.
+    mutateTree tree = do
+      let sz = countNodes tree
+      coin <- rnd $ tossBiased (_pm args)
+      if coin
+         then do pos <- rnd $ randomRange (0, min sz maxSize - 1)
+                 mutAtTree pos maxSize tree
+         else pure tree
+
+    -- | Walk a Fix SRTree to a position and replace the subtree with a random expression.
+    -- Unlike mutAt, this works on Fix SRTree directly and never touches the e-graph.
+    mutAtTree :: Int -> Int -> Fix SRTree -> RndEGraph (Fix SRTree)
+    mutAtTree 0 sizeLeft _ = do
+      t <- insertRndExpr (max 1 sizeLeft) rndTerm rndNonTerm >>= canonical >>= getBestExpr
+      pure t
+    mutAtTree _ 1 _ = rnd $ randomFrom terms
+    mutAtTree pos sizeLeft (Fix (Uni f t)) =
+      (Fix . Uni f) <$> mutAtTree (pos-1) (sizeLeft-1) t
+    mutAtTree pos sizeLeft (Fix (Bin op l r)) = do
+      let szL = countNodes l
+      if szL < pos
+        then do r' <- mutAtTree (pos-szL-1) (sizeLeft-szL-1) r
+                pure . Fix $ Bin op l r'
+        else do l' <- mutAtTree (pos-1) (sizeLeft-1) l
+                pure . Fix $ Bin op l' r
+    mutAtTree _ _ tree = pure tree  -- Var, Const, Param, Y: nothing to mutate
+
+    -- | Run offspring tree generation in parallel using mapConcurrently.
+    -- Each worker gets a read-only snapshot of the e-graph, so tree extraction
+    -- (tournament, crossover, mutation) is safe. No e-graph writes happen here.
+    generateTrees :: [EClassId] -> RndEGraph [Fix SRTree]
+    generateTrees xs = do
+      nCaps <- io getNumCapabilities
+      g0 <- rnd get
+      let nJobs = _nPop args
+          gs = [ mkStdGen (fromIntegral i * 7919 + 42) | i <- [0 .. nJobs - 1] ]
+      eg <- get
+      io $ mapConcurrently (\g -> runRndEGraph eg g $ do
+        xs' <- Prelude.mapM canonical xs
+        parents <- tournament xs'
+        coin <- rnd toss
+        if coin
+          then crossoverTree (fst parents) (snd parents) >>= mutateTree
+          else do p <- rnd (randomFrom [fst parents, snd parents])
+                  getBestExpr p
+        ) (Prelude.take nJobs gs)
 
     getSubtree :: Int -> Int -> Maybe (EClassId -> ENode) -> [Maybe (EClassId -> ENode)] -> [EClassId] -> EClassId -> RndEGraph (Fix SRTree)
     getSubtree 0 sz (Just parent) mGrandParents cands p' = do
@@ -430,7 +478,7 @@ egraphGP dataTrainVals dataTests args = do
                                -- Check if this expression already exists in the DB
                                en <- getBestENode eid >>= canonize
                                let key = T.pack (enodeKey en)
-                               inDB <- io $ expressionInDB (_dbFile args) key
+                               inDB <- io $ expressionInDB (_dbFitFile args) key
                                if inDB
                                  then pure p  -- already explored: keep original
                                  else pure eid
