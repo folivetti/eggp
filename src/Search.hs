@@ -631,8 +631,8 @@ egraphGP dataTrainVals dataTests args = do
                 dist = case distribution of { NLL d -> d; MSE -> LeastSquares; LOG10 -> LeastSquares; MAE -> LeastSquares; MAPE -> LeastSquares; Pinball _ -> LeastSquares; _ -> Gaussian }
                 et = compileTree dist x y mYErr best'
                 stats = getStatsFromModel dist mYErr x y best' theta
-                profiles = getAllProfiles Bates et theta (_stdErr stats) [] 0.05
-                ciVals = paramCI (Profile stats profiles) nSamples theta 0.05
+            profiles <- liftIO $ getAllProfiles Bates et theta (_stdErr stats) [] 0.05
+            let ciVals = paramCI (Profile stats profiles) nSamples theta 0.05
                 maxPExpr = actualMaxP
                 ciStr = intercalate ","
                       $ Prelude.map (\(CI _ l h) -> showNA l <> "," <> showNA h) ciVals
