@@ -50,7 +50,7 @@ def _get_hs_eggp_run_data():
         _hs_eggp_run_data = lib.hs_eggp_run_data
     return _hs_eggp_run_data
 
-VERSION: str = "2.2.0"
+VERSION: str = "2.2.1"
 
 
 _hs_rts_init: bool = False
@@ -486,14 +486,20 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         if x.ndim == 1:
             x = x.reshape(-1,1)
-        tStr = self.results.iloc[-1].theta.split(";")
+        best = self._best_row()
+        tStr = best.theta.split(";")
         t = np.array(list(map(float, tStr))) if len(tStr[0]) > 0  else np.array([])
-        y = eval(self.results.iloc[-1].Numpy)
+        y = eval(best.Numpy)
         if self.loss == "Bernoulli":
             return 1/(1 + np.exp(-y))
         elif self.loss == "Poisson":
             return np.exp(y)
         return y
+    def _best_row(self):
+        """Select the best model (lowest training loss)."""
+        lt = pd.to_numeric(self.results["loss_train"], errors="coerce")
+        return self.results.loc[lt.idxmin()]
+
     def evaluate_best_model_view(self, x, view):
         if view not in np.unique(self.results.view.values):
             raise ValueError("Invalid view index")
@@ -501,8 +507,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
-        ix = self.results.iloc[-1].id
-        best = self.results[self.results.id==ix].iloc[view]
+        ix = self._best_row().id
+        best = self.results[(self.results.id==ix) & (self.results.view==view)].iloc[0]
         t = np.array(list(map(float, best.theta.split(";")))) if len(best.theta) > 0 else np.array([])
         y = eval(best.Numpy)
         if self.loss == "Bernoulli":

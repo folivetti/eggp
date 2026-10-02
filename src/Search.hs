@@ -137,7 +137,7 @@ egraphGP dataTrainVals dataTests args = do
   fitBatchCached fitCache False fitFun pop
 
   output <- if _trace args 
-               then forM (Prelude.zip [0..] pop) $ uncurry (printExpr nFeats)
+               then forM (Prelude.zip [0..] pop) $ uncurry (printExpr False nFeats)
                else pure []
 
   let m = (_nPop args) `div` (_maxSize args)
@@ -179,7 +179,7 @@ egraphGP dataTrainVals dataTests args = do
           Nothing -> pure ()
 
     out' <- if _trace args
-              then forM (Prelude.zip [curIx..] newPop') $ uncurry (printExpr nFeats)
+              then forM (Prelude.zip [curIx..] newPop') $ uncurry (printExpr False nFeats)
               else pure []
 
     totSz <- gets (HashMap.size . _eNodeToEClass)
@@ -219,7 +219,7 @@ egraphGP dataTrainVals dataTests args = do
   actualMaxP <- if _nParams args == -1
                   then computeMaxP (_maxSize args) (_distribution args) nFeats
                   else pure (_nParams args)
-  let printExpr' = printExpr actualMaxP
+  let printExpr' = printExpr True actualMaxP
   pf <- if _trace args 
            then pure finalOut 
            else paretoFront fitFun (_maxSize args) printExpr'
@@ -552,8 +552,8 @@ egraphGP dataTrainVals dataTests args = do
             pure $ naryTree op exprs
 
 
-    printExpr :: Int -> Int -> EClassId -> RndEGraph [String]
-    printExpr actualMaxP ix ec = do
+    printExpr :: Bool -> Int -> Int -> EClassId -> RndEGraph [String]
+    printExpr withCI actualMaxP ix ec = do
         thetas' <- getTheta ec
         bestExpr0 <- getBestExpr ec
         bestExpr <- if _simplify args
@@ -631,18 +631,22 @@ egraphGP dataTrainVals dataTests args = do
                 dist = case distribution of { NLL d -> d; MSE -> LeastSquares; LOG10 -> LeastSquares; MAE -> LeastSquares; MAPE -> LeastSquares; Pinball _ -> LeastSquares; _ -> Gaussian }
                 et = compileTree dist x y mYErr best'
                 stats = getStatsFromModel dist mYErr x y best' theta
-            profiles <- liftIO $ getAllProfiles Bates et theta (_stdErr stats) [] 0.05
-            let ciVals = paramCI (Profile stats profiles) nSamples theta 0.05
-                maxPExpr = actualMaxP
-                ciStr = intercalate ","
-                      $ Prelude.map (\(CI _ l h) -> showNA l <> "," <> showNA h) ciVals
-                      ++ Prelude.replicate (2 * (maxPExpr - length ciVals)) ""
-
-            pure $ show ix <> "," <> show view <> "," <> showExprFun expr <> "," <> "\"" <> showPython best' <> "\","
+                row = show ix <> "," <> show view <> "," <> showExprFun expr <> "," <> "\"" <> showPython best' <> "\","
                            <> "\"$$" <> showLatexFun best' <> "$$\","
                            <> thetaStr <> "," <> show (countNodes $ convertProtectedOps expr)
                            <> "," <> vals
-                           <> "," <> ciStr
+            if withCI
+              then do
+                -- profile-likelihood CIs (expensive: an NLopt walk per parameter);
+                -- only computed for the final Pareto front, not per-generation trace.
+                profiles <- liftIO $ getAllProfiles Bates et theta (_stdErr stats) [] 0.05
+                let ciVals = paramCI (Profile stats profiles) nSamples theta 0.05
+                    maxPExpr = actualMaxP
+                    ciStr = intercalate ","
+                          $ Prelude.map (\(CI _ l h) -> showNA l <> "," <> showNA h) ciVals
+                          ++ Prelude.replicate (2 * (maxPExpr - length ciVals)) ""
+                pure $ row <> "," <> ciStr
+              else pure row
         pure ts
 
     insertTerms =
