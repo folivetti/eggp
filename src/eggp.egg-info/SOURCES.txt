@@ -14,4 +14,6 @@ src/eggp.egg-info/dependency_links.txt
 src/eggp.egg-info/entry_points.txt
 src/eggp.egg-info/requires.txt
 src/eggp.egg-info/top_level.txt
+test/test_db_mode.py
 test/test_pyeggp.py
+test/test_regression_integration.py

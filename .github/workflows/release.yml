@@ -25,8 +25,8 @@ env:
   # you must update the containers in pyproject.toml under tool.cibuildwheel.
   #
   # See: https://github.com/wenkokke/manylinux_ghc
-  DEFAULT_GHC_VERSION: "9.12"
-  DEFAULT_CABAL_VERSION: "3.14"
+  DEFAULT_GHC_VERSION: "9.14.1"
+  DEFAULT_CABAL_VERSION: "3.16"
   DEFAULT_PYTHON_VERSION: "3.12"
 
 jobs:
@@ -41,11 +41,11 @@ jobs:
     strategy:
       matrix:
         job:
-          #- os:
-          #    name: "Linux"
-          #    runner: "ubuntu-24.04-arm"
-          #    arch: "aarch64"
-          #    plat: "manylinux"
+          - os:
+              name: "Linux"
+              runner: "ubuntu-24.04-arm"
+              arch: "aarch64"
+              plat: "manylinux"
           #- os:
           #    name: "Linux"
           #    runner: "ubuntu-latest"
@@ -61,16 +61,16 @@ jobs:
           #    runner: "ubuntu-latest"
           #    arch: "x86_64"
           #    plat: "musllinux"
-          #- os:
-          #    name: "macOS"
-          #    runner: "macos-15-intel"
-          #    arch: "x86_64"
-          #    plat: "macosx"
-          #- os:
-          #    name: "macOS"
-          #    runner: "macos-14"
-          #    arch: "arm64"
-          #    plat: "macosx"
+          - os:
+              name: "macOS"
+              runner: "macos-15-intel"
+              arch: "x86_64"
+              plat: "macosx"
+          - os:
+              name: "macOS"
+              runner: "macos-15"
+              arch: "arm64"
+              plat: "macosx"
           #- os:
           #    name: "Windows"
           #    runner: "windows-latest"
@@ -95,11 +95,23 @@ jobs:
       - # Required to run job via act: https://github.com/nektos/act
         run: pip install -r "./requirements-ci.txt"
 
-      - # 19-05-2023:
-        # Required to build the wheels on macOS and Windows, but not on Linux,
-        # as Linux builds are run in containers, where GHC and Cabal are built
-        # by the `./scripts/before-all.sh` scripts.
-        if: matrix.job.os.name == 'macOS' || matrix.job.os.name == 'Windows'
+      - if: matrix.job.os.name == 'macOS'
+        name: Install GHC and Cabal via ghcup
+        run: |
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then GHCUP_ARCH="aarch64-apple-darwin"; else GHCUP_ARCH="x86_64-apple-darwin"; fi
+          curl -L https://github.com/haskell/ghcup-hs/releases/download/v0.2.6.2/${GHCUP_ARCH}-ghcup-0.2.6.2 -o /usr/local/bin/ghcup
+          chmod +x /usr/local/bin/ghcup
+          ghcup install ghc 9.14.1
+          ghcup install cabal 3.16
+          ghcup set ghc 9.14.1
+          export PATH="$HOME/.ghcup/bin:$PATH"
+          cabal update
+          echo "$HOME/.ghcup/bin" >> $GITHUB_PATH
+          echo "GHC=$HOME/.ghcup/bin/ghc" >> $GITHUB_ENV
+          echo "CABAL=$HOME/.ghcup/bin/cabal" >> $GITHUB_ENV
+
+      - if: matrix.job.os.name == 'Windows'
         uses: haskell-actions/setup@v2
         with:
           ghc-version: ${{ env.DEFAULT_GHC_VERSION }}
@@ -147,14 +159,15 @@ jobs:
         name: Install Homebrew dependencies
         run: |
           brew update
-          brew install nlopt
+          brew install nlopt libpq
       - if: matrix.job.os.name == 'macOS'
         name: Configure environment variables
         run: |
           echo "LIBRARY_PATH=/usr/local/lib:/opt/homebrew/lib" >> $GITHUB_ENV
           echo "CPATH=/usr/local/include:/opt/homebrew/include" >> $GITHUB_ENV
           echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
-          echo "MACOSX_DEPLOYMENT_TARGET=14.0" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=15.0" >> $GITHUB_ENV
+          echo "PATH=/usr/local/opt/libpq/bin:/opt/homebrew/opt/libpq/bin:$PATH" >> $GITHUB_ENV
           
       - # 19-06-2023:
         # Required to build aarch64 wheels.
@@ -179,7 +192,33 @@ jobs:
         env:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
-          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
+          CIBW_BEFORE_ALL_LINUX: >
+            dnf install -y gcc gcc-c++ make cmake curl git gmp-devel libffi-devel ncurses-devel zlib-devel openssl-devel krb5-devel libxml2-devel &&
+            ARCH=$(uname -m) &&
+            if [ "$ARCH" = "aarch64" ]; then PG_ARCH="aarch64"; else PG_ARCH="x86_64"; fi &&
+            dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-${PG_ARCH}/pgdg-redhat-repo-latest.noarch.rpm &&
+            dnf -qy module disable postgresql &&
+            dnf install -y postgresql16-devel postgresql16-libs &&
+            if [ "$ARCH" = "aarch64" ]; then GHCU_ARCH="aarch64"; else GHCU_ARCH="x86_64"; fi &&
+            curl -L https://github.com/haskell/ghcup-hs/releases/download/v0.2.6.2/${GHCU_ARCH}-linux-ghcup-0.2.6.2 -o /usr/local/bin/ghcup &&
+            chmod +x /usr/local/bin/ghcup &&
+            ghcup install ghc 9.14.1 &&
+            ghcup install cabal 3.16 &&
+            ghcup set ghc 9.14.1 &&
+            git clone --depth 1 https://github.com/stevengj/nlopt.git /tmp/nlopt &&
+            cd /tmp/nlopt && mkdir build && cd build &&
+            cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DLIB_SUFFIX=64 &&
+            make -j$(nproc) && make install && ldconfig &&
+            ln -sf /usr/pgsql-16/lib/libpq.so* /usr/local/lib64/ &&
+            ln -sf /usr/pgsql-16/lib/libpq.a /usr/local/lib64/ &&
+            ln -sf /usr/pgsql-16/lib/pg_config* /usr/local/lib64/ &&
+            ln -sf /usr/pgsql-16/include/libpq-fe.h /usr/local/include/ &&
+            ln -sf /usr/pgsql-16/include/pg_config.h /usr/local/include/ &&
+            ln -sf /usr/pgsql-16/include/postgresql /usr/local/include/postgresql &&
+            ln -sf /usr/pgsql-16/lib/libpgcommon* /usr/local/lib64/ &&
+            ldconfig
+          CIBW_ENVIRONMENT_LINUX: 'PATH=/root/.ghcup/bin:/usr/pgsql-16/bin:$PATH LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib LD_LIBRARY_PATH=/usr/local/lib64:/usr/pgsql-16/lib C_INCLUDE_PATH=/usr/local/include:/usr/pgsql-16/include PKG_CONFIG_PATH=/usr/local/lib64/pkgconfig:/usr/pgsql-16/lib/pkgconfig'
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-15' && '15.0' || '15.0' }}
       
       - # Build source distribution (sdist)
         run: |
