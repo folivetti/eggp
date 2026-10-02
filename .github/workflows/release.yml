@@ -172,14 +172,13 @@ jobs:
         with:
           platforms: "386"
 
-      - uses: pypa/cibuildwheel@v3.4.0
+      - uses: pypa/cibuildwheel@v4.0.0
         with:
           output-dir: "./wheelhouse"
           config-file: "{package}/pyproject.toml"
         env:
           CIBW_ARCHS: "${{ matrix.job.os.arch }}"
           CIBW_BUILD: "*${{ matrix.job.os.plat }}*"
-          CIBW_SKIP: "cp314*"
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os.runner == 'macos-14' && '14.0' || '14.0' }}
       
       - # Build source distribution (sdist)
