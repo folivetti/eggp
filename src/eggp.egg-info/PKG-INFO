@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: eggp
-Version: 1.0.14
+Version: 2.2.1
 Summary: Python Wheels for eggp algorithm.
 Author-email: Fabricio Olivetti <folivetti@users.noreply.github.com>
 License:                     GNU GENERAL PUBLIC LICENSE
@@ -686,6 +686,7 @@ Classifier: Programming Language :: Python :: 3.10
 Classifier: Programming Language :: Python :: 3.11
 Classifier: Programming Language :: Python :: 3.12
 Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
 Classifier: Programming Language :: Python :: Implementation :: CPython
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
@@ -792,7 +793,7 @@ To install eggp you'll need:
 - `libz`
 - `libnlopt`
 - `libgmp`
-- `ghc-9.6.6`
+- `ghc-9.14.1`
 - `cabal` or `stack`
 
 ### Method 1: PIP

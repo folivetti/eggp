@@ -4,9 +4,9 @@ from threading import Lock
 from typing import Iterator, List
 import string
 from io import StringIO
-import tempfile
-import csv
 import os
+import multiprocessing
+import ctypes
 
 import numpy as np
 import pandas as pd
@@ -14,6 +14,13 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
+
+# GHC auto-initializes the RTS when the shared library is loaded (during the
+# _binding import below).  At that point it reads the GHCRTS env var for flags;
+# if unset, defaults to -N1.  Set it here so the RTS starts with the right
+# number of capabilities.
+if os.environ.get("GHCRTS") is None:
+    os.environ["GHCRTS"] = "-N4"
 
 from ._binding import (
     unsafe_hs_eggp_version,
@@ -23,12 +30,31 @@ from ._binding import (
     unsafe_hs_eggp_exit,
 )
 
-VERSION: str = "1.0.17"
+_hs_eggp_run_data = None
+
+def _get_hs_eggp_run_data():
+    global _hs_eggp_run_data
+    if _hs_eggp_run_data is None:
+        lib = ctypes.CDLL(_binding.__file__)
+        lib.hs_eggp_run_data.argtypes = [
+            ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_int),
+            ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_double, ctypes.c_double, ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int,
+            ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int,
+        ]
+        lib.hs_eggp_run_data.restype = ctypes.c_char_p
+        _hs_eggp_run_data = lib.hs_eggp_run_data
+    return _hs_eggp_run_data
+
+VERSION: str = "2.2.1"
 
 
 _hs_rts_init: bool = False
 _hs_rts_lock: Lock = Lock()
-
 
 def hs_rts_exit() -> None:
     global _hs_rts_lock
@@ -37,7 +63,7 @@ def hs_rts_exit() -> None:
 
 
 @contextmanager
-def hs_rts_init(args: List[str] = []) -> Iterator[None]:
+def hs_rts_init(args: List[str] = ["eggp", "+RTS", "-N4", "-RTS"]) -> Iterator[None]:
     global _hs_rts_init
     global _hs_rts_lock
     with _hs_rts_lock:
@@ -54,12 +80,41 @@ def version() -> str:
 
 
 def main(args: List[str] = []) -> int:
-    with hs_rts_init(args):
+    # args often come from sys.argv which includes the program name at [0].
+    # Strip it and prepend RTS flags so hs_init sees +RTS -N{numCores} -RTS.
+    cli_args = args[1:] if args and not args[0].startswith('-') else args
+    rts_flags = ["+RTS", "-N4", "-RTS"]
+    rts_args = ["eggp"] + rts_flags
+    with hs_rts_init(rts_args + cli_args):
         return unsafe_hs_eggp_main()
 
-def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int) -> str:
+def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int, dbFile: str = "", dbFitFile: str = "", dbDataset: str = "", dbCacheSize: int = 100000, dbFlushEvery: int = 0) -> str:
     with hs_rts_init():
-        return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames, useFracBayes)
+        return unsafe_hs_eggp_run(dataset, gen, nPop, maxSize, nTournament, pc, pm, nonterminals, loss, optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo, loadFrom, varnames, useFracBayes, dbFile, dbFitFile, dbDataset, dbCacheSize, dbFlushEvery)
+
+def eggp_run_data(data: np.ndarray, nrows: List[int], header: str, params: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int, dbFile: str = "", dbFitFile: str = "", dbDataset: str = "", dbCacheSize: int = 100000, dbFlushEvery: int = 0) -> str:
+    ''' Runs eggp with the dataset passed directly as a contiguous double
+    array, bypassing the temp-CSV round trip.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        A C-contiguous float64 matrix (row-major) with all views concatenated
+        vertically.
+    nrows : list of int
+        Per-view row counts; its length is the number of datasets (views).
+    header : str
+        Comma-separated column names, in column order.
+    params : str
+        The same `:::target:features:y_err` suffix used by the file-based path
+        (e.g. ``get_fname("", header)``).
+    '''
+    data = np.ascontiguousarray(data, dtype=np.float64)
+    cdata = data.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+    cnrows = (ctypes.c_int * len(nrows))(*nrows)
+    with hs_rts_init():
+        out = _get_hs_eggp_run_data()(cdata, cnrows, len(nrows), data.shape[1], header.encode(), params.encode(), gen, nPop, maxSize, nTournament, pc, pm, nonterminals.encode(), loss.encode(), optIter, optRepeat, nParams, split, max_time, simplify, trace, generational, dumpTo.encode(), loadFrom.encode(), varnames.encode(), useFracBayes, dbFile.encode(), dbFitFile.encode(), dbDataset.encode(), dbCacheSize, dbFlushEvery)
+    return out.decode("utf-8") if out is not None else ""
 
 def make_function(expression, loss="MSE"):
     def func(x, t):
@@ -112,13 +167,21 @@ class EGGP(BaseEstimator, RegressorMixin):
               `recip` is the reciprocal (1/x)
               `cbrt` is the cubic root
 
-    loss : {"MSE", "Gaussian", "Bernoulli", "Poisson"}, default="MSE"
+    loss : {"MSE", "LOG10", "Gaussian", "Bernoulli", "Poisson", "MAE", "MAPE", "Pinball"}, default="MSE"
         Loss function used to evaluate the expressions:
         - MSE (mean squared error) should be used for regression problems.
+        - LOG10 (mean squared error in log10 space) for regression on log-spaced targets.
+        - MAE (mean absolute error) for regression robust to outliers.
+        - MAPE (mean absolute percentage error) for relative-error regression.
+        - Pinball for quantile regression (the quantile is given by `pinball_tau`).
         - Gaussian likelihood should be used for regression problem when you want to
           fit the error term.
         - Bernoulli likelihood should be used for classification problem.
         - Poisson likelihood should be used when the data distribution follows a Poisson.
+
+    pinball_tau : float, default=0.5
+        Quantile to minimize when `loss` is "Pinball". Must be a value
+        between 0 and 1.
 
     optIter : int, default=50
         Number of iterations for the parameter optimization.
@@ -170,12 +233,12 @@ class EGGP(BaseEstimator, RegressorMixin):
     >>> estimator = EGGP(loss="Bernoulli")
     >>> estimator.fit(X, y)
     """
-    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = "", useFracBayes = False):
+    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = "", useFracBayes = False, pinball_tau = 0.5, dbFile = "", dbFitFile = "", dbDataset = "", dbCacheSize = 100000, dbFlushEvery = 0):
         nts = "add,sub,mul,div,power,powerabs,\
                aq,abs,sin,cos,tan,sinh,cosh,tanh,\
                asin,acos,atan,asinh,acosh,atanh,sqrt,\
                sqrtabs,cbrt,square,log,logabs,exp,recip,cube"
-        losses = ["MSE", "LOG10", "Gaussian", "Bernoulli", "Poisson"]
+        losses = ["MSE", "LOG10", "Gaussian", "Bernoulli", "Poisson", "MAE", "MAPE", "Pinball"]
         if gen < 1:
             raise ValueError('gen should be greater than 1')
         if nPop < 1:
@@ -210,6 +273,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             raise TypeError('max_time must be an integer')
         if not isinstance(useFracBayes, bool):
             raise TypeError('useFracBayes must be a boolean')
+        if pinball_tau <= 0 or pinball_tau >= 1:
+            raise ValueError('pinball_tau must be a value between 0 and 1')
         self.gen = gen
         self.nPop = nPop
         self.maxSize = maxSize
@@ -230,6 +295,18 @@ class EGGP(BaseEstimator, RegressorMixin):
         self.loadFrom = loadFrom
         self.is_fitted_ = False
         self.useFracBayes = int(useFracBayes)
+        self.pinball_tau = pinball_tau
+        self.dbFile = dbFile
+        self.dbFitFile = dbFitFile
+        self.dbDataset = dbDataset
+        self.dbCacheSize = dbCacheSize
+        self.dbFlushEvery = dbFlushEvery
+
+    @property
+    def loss_arg(self):
+        if self.loss == "Pinball":
+            return f"Pinball {self.pinball_tau}"
+        return self.loss
 
     def combine_dataset(self, X, y, Xerr, yerr):
         ''' Combines the error information into a single dataset.
@@ -311,18 +388,9 @@ class EGGP(BaseEstimator, RegressorMixin):
         else:
             varnames = ""
 
-        with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, prefix='datatemp_', suffix='.csv', dir=os.getcwd()) as temp_file:
-            writer = csv.writer(temp_file)
-            writer.writerow(header)
-            writer.writerows(combined)
-            dataset = temp_file.name
-        dname = self.get_fname(dataset, header)
+        dname = self.get_fname("", header)
 
-        try:
-            csv_data = eggp_run(dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
-
-        finally:
-            os.remove(dataset)
+        csv_data = eggp_run_data(combined, [combined.shape[0]], ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss_arg, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes, self.dbFile, self.dbFitFile, self.dbDataset, self.dbCacheSize, self.dbFlushEvery)
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
@@ -347,27 +415,17 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         combineds = [self.combine_dataset(X, y, Xerr, yerr) for X, y, Xerr, yerr in zip(Xs, ys, Xerrs, yerrs)]
         header = self.get_header(Xs[0].shape[1])
-        datasets = []
-        datasetsNames = []
         if isinstance(Xs[0], pd.DataFrame):
             varnames = ",".join(Xs[0].columns)
         else:
             varnames = ""
 
-        for combined in combineds:
-            with tempfile.NamedTemporaryFile(mode='w+', newline='', delete=False, prefix='datatemp_', suffix='.csv', dir=os.getcwd()) as temp_file:
-                writer = csv.writer(temp_file)
-                writer.writerow(header)
-                writer.writerows(combined)
-                datasetsNames.append(temp_file.name)
-                datasets.append(self.get_fname(temp_file.name, header))
+        data = np.vstack(combineds)
+        nrows = [combined.shape[0] for combined in combineds]
+        dname = self.get_fname("", header)
 
-        try:
-            csv_data = eggp_run(" ".join(datasets), self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
-                                self.nonterminals, self.loss, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes)
-        finally:
-            for dataset in datasetsNames:
-                os.remove(dataset)
+        csv_data = eggp_run_data(data, nrows, ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
+                            self.nonterminals, self.loss_arg, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes, self.dbFile, self.dbFitFile, self.dbDataset, self.dbCacheSize, self.dbFlushEvery)
 
         if len(csv_data) > 0:
             csv_io = StringIO(csv_data.strip())
@@ -428,14 +486,20 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         if x.ndim == 1:
             x = x.reshape(-1,1)
-        tStr = self.results.iloc[-1].theta.split(";")
+        best = self._best_row()
+        tStr = best.theta.split(";")
         t = np.array(list(map(float, tStr))) if len(tStr[0]) > 0  else np.array([])
-        y = eval(self.results.iloc[-1].Numpy)
+        y = eval(best.Numpy)
         if self.loss == "Bernoulli":
             return 1/(1 + np.exp(-y))
         elif self.loss == "Poisson":
             return np.exp(y)
         return y
+    def _best_row(self):
+        """Select the best model (lowest training loss)."""
+        lt = pd.to_numeric(self.results["loss_train"], errors="coerce")
+        return self.results.loc[lt.idxmin()]
+
     def evaluate_best_model_view(self, x, view):
         if view not in np.unique(self.results.view.values):
             raise ValueError("Invalid view index")
@@ -443,8 +507,8 @@ class EGGP(BaseEstimator, RegressorMixin):
             x = x.to_numpy()
         if x.ndim == 1:
             x = x.reshape(-1,1)
-        ix = self.results.iloc[-1].id
-        best = self.results[self.results.id==ix].iloc[view]
+        ix = self._best_row().id
+        best = self.results[(self.results.id==ix) & (self.results.view==view)].iloc[0]
         t = np.array(list(map(float, best.theta.split(";")))) if len(best.theta) > 0 else np.array([])
         y = eval(best.Numpy)
         if self.loss == "Bernoulli":
