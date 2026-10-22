@@ -22,6 +22,7 @@ model.fit(df[['r_k', 'log_Re']], df['target'])
 
 print("Multi-objective mode returning the Pareto front without simplifcation: ")
 print(model.results[['Expression', 'loss_train', 'loss_val', 'size', 'dl_train']])
+print(model.results.columns)
 
 model = EGGP(gen=100, nPop=100, maxSize=15, nTournament=5, pc=0.8, pm=0.2, nonterminals='add,sub,mul,div,power,exp,log', loss='MSE', optIter=100, optRepeat=5, nParams=2, folds=2, max_time=120, simplify=False, dumpTo='regression_example.egg', useFracBayes=True)
 
