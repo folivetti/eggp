@@ -37,6 +37,7 @@ import Data.List ( sort, maximumBy, intercalate, sortOn, intersperse, nub, zip4 
 import Data.IntSet (IntSet)
 import qualified Data.IntSet as IntSet
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
 import qualified Data.Sequence as FingerTree
 import Data.Function ( on )
 import qualified Data.Foldable as Foldable
@@ -45,7 +46,7 @@ import List.Shuffle ( shuffle )
 import Algorithm.SRTree.NonlinearOpt
 import Data.Binary ( encode, decode )
 import qualified Data.ByteString.Lazy as BS
-import Data.List.Split (splitOn)
+import Data.List.Split (splitOn, chunksOf)
 
 import Algorithm.EqSat (runEqSat,applySingleMergeOnlyEqSat)
 
@@ -65,15 +66,16 @@ import Foreign.C (CInt (..), CDouble (..))
 import Foreign.C.String (CString, newCString, withCString, peekCString, peekCAString, newCAString)
 import Paths_eggp (version)
 import System.Environment (getArgs)
+import System.IO (hPutStrLn, stderr)
 import System.Exit (ExitCode (..))
 import Data.Version (showVersion)
 import Control.Exception (Exception (..), SomeException (..), handle)
 import Data.Time.Clock.POSIX
 
-import Algorithm.EqSat.Storage.SQLite (saveGraph)
+import Algorithm.EqSat.Storage.SQLite (saveGraph, loadGraphResident)
 import Algorithm.EqSat.Storage.Query (getOrCreateDataset, readDatasetFit, writeDatasetFit, expressionEclass)
 import Algorithm.EqSat.Storage.Types (enodeKey, parseTheta, serializeTheta)
-import Algorithm.EqSat.Storage.Backend (SqlBackend)
+import Algorithm.EqSat.Storage.Backend (SqlBackend(..), SqlValue(..), sqlToInt)
 import qualified Database.SQLite3 as SQLite
 import qualified Data.Text as T
 import Control.Exception (bracket)
@@ -121,6 +123,24 @@ forceSimp t = let s = simplifyEqSatDefault t in countNodes s `seq` s
 egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> StateT EGraph (StateT StdGen IO) String
 egraphGP dataTrainVals dataTests args = do
   when ((not.null) (_loadFrom args)) $ (io $ BS.readFile (_loadFrom args)) >>= \eg -> put (decode eg)
+
+  -- DB mode: resume the persisted e-graph. Loading it preserves e-class ids,
+  -- which keeps the eid-keyed fitness cache valid across runs and stops a
+  -- smaller re-run from overwriting the graph while stale dataset_fit rows
+  -- (whose eids then have no page) remain -> "<extraction failed>" in queries.
+  when (null (_loadFrom args) && not (null (_dbFile args))) $ do
+    meg <- io $ withSqliteDB (_dbFile args) $ \db -> do
+      _ <- getOrCreateDataset db (dbDatasetName args)
+      loadGraphResident db
+    case meg of
+      Right eg -> put eg
+      Left _   -> pure ()
+
+  -- Keep the fit DB coherent with the graph: drop rows for eids that are not
+  -- part of it (left over from runs whose graph was overwritten).
+  when (not (null (_dbFitFile args)) && not (null (_dbFile args))) $ do
+    eg <- get
+    io $ pruneFitDB (_dbFitFile args) (dbDatasetName args) (graphEids eg)
 
   -- Load fitness cache from DB if in DB mode
   fitCache <- if not (null (_dbFitFile args))
@@ -693,6 +713,26 @@ dbDatasetName args
 withSqliteDB :: String -> (forall b. SqlBackend b => b -> IO a) -> IO a
 withSqliteDB path k = bracket (SQLite.open (T.pack path)) SQLite.close k
 
+-- | All e-class ids known to a graph (canonical roots plus merged-away ids).
+graphEids :: EGraph -> IntSet
+graphEids eg = IntMap.keysSet (_canonicalMap eg) <> IntMap.keysSet (_eClass eg)
+
+-- | Delete @dataset_fit@ rows whose eid is not in the current graph. Rows are
+-- removed in chunks to stay under SQLite's bound-parameter limit.
+pruneFitDB :: String -> String -> IntSet -> IO ()
+pruneFitDB "" _ _ = pure ()
+pruneFitDB fitFile dataset valid = withSqliteDB fitFile $ \db -> do
+  dsid <- getOrCreateDataset db dataset
+  rows <- queryDb db "SELECT eid FROM dataset_fit WHERE dataset_id = ?"
+            [SqlInteger (fromIntegral dsid)]
+  let stale = [ eid | [e] <- rows, let eid = sqlToInt e
+                     , not (IntSet.member eid valid) ]
+  forM_ (chunksOf 400 stale) $ \chunk -> do
+    let marks = intercalate "," (Prelude.replicate (length chunk) "?")
+    runDb db ("DELETE FROM dataset_fit WHERE dataset_id = ? AND eid IN ("
+              <> T.pack marks <> ")")
+      (SqlInteger (fromIntegral dsid) : Prelude.map (SqlInteger . fromIntegral) chunk)
+
 -- | Load fitness cache from DB: eclass id -> (fitness, theta_text).
 -- When the e-graph structure is loaded via --load-from, e-class IDs are
 -- preserved so this cache is directly usable.  For cross-run keyed reuse
@@ -734,8 +774,12 @@ syncEGraphDB "" _ _ = pure ()
 syncEGraphDB dbFile dataset eg
   = withSqliteDB dbFile $ \db -> do
       dsid <- getOrCreateDataset db dataset
-      _ <- saveGraph db dsid eg
-      pure ()
+      r <- saveGraph db dsid eg
+      case r of
+        Left err -> do
+          hPutStrLn stderr ("eggp: failed to sync e-graph to " <> dbFile <> ": " <> err)
+          ioError (userError ("syncEGraphDB: " <> err))
+        Right () -> pure ()
 
 -- | Like fitBatch, but checks the fitness cache first.
 -- For each e-class whose ID is in the cache, insertFitness is called directly

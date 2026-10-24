@@ -1,5 +1,18 @@
 # Changelog for eggp
 
+## 2.2.2
+
+- **DB mode resumes the persisted e-graph**: when `--load-from` is not given,
+  the stored graph is loaded with `loadGraphResident`, preserving e-class ids
+  so the eid-keyed fitness cache stays valid across runs. Re-running with the
+  same DB files no longer leaves stale `dataset_fit` rows that produce
+  `<extraction failed>` in queries.
+- **Fit-DB coherence**: stale `dataset_fit` rows (eids not in the graph) are
+  pruned at startup.
+- **`syncEGraphDB` surfaces `saveGraph` errors** (stderr + exception) instead
+  of silently discarding them.
+- Requires `srtree >= 3.0.0.6` and `srtree-db >= 0.1.3.3`.
+
 ## 2.2.1
 
 - **3x speedup with multithreading** (-N4): parallel tree generation via
