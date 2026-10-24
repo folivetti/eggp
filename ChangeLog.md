@@ -11,6 +11,12 @@
   pruned at startup.
 - **`syncEGraphDB` surfaces `saveGraph` errors** (stderr + exception) instead
   of silently discarding them.
+- **RTS/threads are configurable via `GHCRTS`**: the binding now uses
+  `hs_init_with_rtsopts`, the hard-coded `+RTS -N4` was removed, and
+  `GHCRTS` is only given a default `-N4` when it does not specify `-N`.
+  Use `GHCRTS="-N8"` (or `-N` for all cores) before the first eggp call, or
+  `eggp.hs_rts_init(["eggp", "+RTS", "-N8", "-RTS"])` for an explicit
+  override. Other RTS options (e.g. GC flags) now work too.
 - Requires `srtree >= 3.0.0.6` and `srtree-db >= 0.1.3.3`.
 
 ## 2.2.1

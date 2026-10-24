@@ -1,7 +1,7 @@
 import atexit
 from contextlib import contextmanager
 from threading import Lock
-from typing import Iterator, List
+from typing import Iterator, List, Optional
 import string
 from io import StringIO
 import os
@@ -15,12 +15,17 @@ from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 
-# GHC auto-initializes the RTS when the shared library is loaded (during the
-# _binding import below).  At that point it reads the GHCRTS env var for flags;
-# if unset, defaults to -N1.  Set it here so the RTS starts with the right
-# number of capabilities.
-if os.environ.get("GHCRTS") is None:
-    os.environ["GHCRTS"] = "-N4"
+# GHC reads the GHCRTS env var when the RTS is initialized (at the first
+# hs_init call, during the first eggp call).  Set GHCRTS before the first eggp
+# call (ideally before this import) to customize the runtime, e.g.
+# GHCRTS="-N8" for 8 capabilities or GHCRTS="-N" for all cores.  Keep the
+# historical default of 4 capabilities when the user did not specify -N
+# themselves; other GHCRTS flags (e.g. GC tuning) are preserved.
+_ghcrts = os.environ.get("GHCRTS", "")
+_has_n = any(tok == "-N" or (tok.startswith("-N") and tok[2:].isdigit())
+             for tok in _ghcrts.split())
+if not _has_n:
+    os.environ["GHCRTS"] = (_ghcrts + " -N4").strip()
 
 from ._binding import (
     unsafe_hs_eggp_version,
@@ -50,7 +55,7 @@ def _get_hs_eggp_run_data():
         _hs_eggp_run_data = lib.hs_eggp_run_data
     return _hs_eggp_run_data
 
-VERSION: str = "2.2.1"
+VERSION: str = "2.2.2"
 
 
 _hs_rts_init: bool = False
@@ -63,13 +68,24 @@ def hs_rts_exit() -> None:
 
 
 @contextmanager
-def hs_rts_init(args: List[str] = ["eggp", "+RTS", "-N4", "-RTS"]) -> Iterator[None]:
+def hs_rts_init(args: Optional[List[str]] = None) -> Iterator[None]:
+    ''' Initialize the GHC RTS once (the first eggp call does this implicitly).
+
+    With no ``args`` the RTS reads ``GHCRTS``: e.g. ``GHCRTS="-N8"`` for 8
+    capabilities or ``GHCRTS="-N"`` for all cores.  The package defaults to
+    ``-N4`` when no ``-N`` is present in ``GHCRTS``.  Passing explicit
+    arguments such as ``["eggp", "+RTS", "-N8", "-RTS"]`` overrides
+    ``GHCRTS``.
+
+    The RTS can only be initialized once per process, so set ``GHCRTS`` or
+    call this before the first eggp run.
+    '''
     global _hs_rts_init
     global _hs_rts_lock
     with _hs_rts_lock:
         if not _hs_rts_init:
             _hs_rts_init = True
-            unsafe_hs_eggp_init(args)
+            unsafe_hs_eggp_init(["eggp"] if args is None else args)
             atexit.register(hs_rts_exit)
     yield None
 
@@ -81,11 +97,10 @@ def version() -> str:
 
 def main(args: List[str] = []) -> int:
     # args often come from sys.argv which includes the program name at [0].
-    # Strip it and prepend RTS flags so hs_init sees +RTS -N{numCores} -RTS.
+    # Strip it; GHCRTS (or an explicit +RTS section in the CLI args) controls
+    # the RTS, so do not inject -N here.
     cli_args = args[1:] if args and not args[0].startswith('-') else args
-    rts_flags = ["+RTS", "-N4", "-RTS"]
-    rts_args = ["eggp"] + rts_flags
-    with hs_rts_init(rts_args + cli_args):
+    with hs_rts_init(["eggp"] + cli_args):
         return unsafe_hs_eggp_main()
 
 def eggp_run(dataset: str, gen: int, nPop: int, maxSize: int, nTournament: int, pc: float, pm: float, nonterminals: str, loss: str, optIter: int, optRepeat: int, nParams: int, split: int, max_time : int, simplify: int, trace : int, generational : int, dumpTo: str, loadFrom: str, varnames : str, useFracBayes: int, dbFile: str = "", dbFitFile: str = "", dbDataset: str = "", dbCacheSize: int = 100000, dbFlushEvery: int = 0) -> str:

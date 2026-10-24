@@ -206,6 +206,42 @@ mse = mean_squared_error(y_test, y_pred)
 print(f"Test MSE: {mse}")
 ```
 
+### Multithreading / RTS options
+
+eggp uses GHC's runtime system; the number of Haskell capabilities is
+controlled by the RTS `-N` flag and defaults to **4**. Set `GHCRTS` before the
+first eggp call (ideally before `import eggp`):
+
+```bash
+GHCRTS="-N8" python script.py     # 8 capabilities
+GHCRTS="-N"  python script.py     # all available cores
+```
+
+or in Python, before the first fit:
+
+```python
+import os
+os.environ["GHCRTS"] = "-N8"       # or "-N"
+import eggp
+```
+
+For an explicit override of `GHCRTS`, initialize the RTS yourself before the
+first run:
+
+```python
+import eggp
+
+with eggp.hs_rts_init(["eggp", "+RTS", "-N8", "-RTS"]):
+    model = eggp.EGGP(...)
+    model.fit(X, y)
+```
+
+The RTS can only be initialized once per process, so set this before the first
+eggp call. `-N` only controls Haskell capabilities; numerical libraries such as
+OpenBLAS/OpenMP use their own environment variables (`OPENBLAS_NUM_THREADS`,
+`OMP_NUM_THREADS`). The standalone `eggp` executable (built with `-rtsopts`)
+also accepts `eggp +RTS -N8 -RTS ...`.
+
 ## Parameters
 
 | Parameter | Type | Default | Description |

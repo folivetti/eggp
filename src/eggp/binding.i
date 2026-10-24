@@ -2,6 +2,10 @@
 %{
 #include "EGGP_stub.h"
 
+/* RTS options are accepted only through hs_init_with_rtsopts for a shared
+   library; declare it explicitly (RtsAPI.h) since the stub header may not. */
+extern void hs_init_with_rtsopts(int *argc, char **argv[]);
+
 char * unsafe_hs_eggp_version() {
   return hs_eggp_version();
 }
@@ -15,7 +19,7 @@ char * unsafe_hs_eggp_run( char *dataset, int gens, int nPop, int maxSize, int n
 }
 
 void unsafe_hs_eggp_init(int argc, char **argv) {
-  hs_init(&argc, &argv);
+  hs_init_with_rtsopts(&argc, &argv);
 }
 
 void unsafe_hs_eggp_exit() {
