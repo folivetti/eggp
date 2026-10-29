@@ -55,6 +55,35 @@ def _get_hs_eggp_run_data():
         _hs_eggp_run_data = lib.hs_eggp_run_data
     return _hs_eggp_run_data
 
+def _preload_peer_ffi(pkg_name: str) -> None:
+    """Best-effort load a sibling package's GHC shared library.
+
+    GHC hosts a single RTS per process and does not safely support a Haskell
+    shared library being dlopen'd *after* the RTS has been initialized/used
+    (e.g. importing ``reggression`` after an EGGP fit). Loading the peer
+    binding here keeps both Haskell libraries mapped before the first Haskell
+    call, independent of Python import order.
+    """
+    try:
+        import glob
+        import importlib.util
+        spec = importlib.util.find_spec(pkg_name)
+        if spec is None or not spec.origin:
+            return
+        pkg_dir = os.path.dirname(spec.origin)
+        for pattern in ("_binding*.so", "_binding*.dylib", "_binding*.pyd"):
+            for path in glob.glob(os.path.join(pkg_dir, pattern)):
+                try:
+                    ctypes.CDLL(path, mode=getattr(ctypes, "RTLD_GLOBAL", 0))
+                    return
+                except OSError:
+                    continue
+    except Exception:
+        return
+
+
+_preload_peer_ffi("reggression")
+
 VERSION: str = "2.2.2"
 
 
