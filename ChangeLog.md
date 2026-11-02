@@ -1,5 +1,30 @@
 # Changelog for eggp
 
+## 2.2.3
+
+- **Bound the final profile-likelihood CI stage** (fixes apparent random
+  hangs): computing CIs for every Pareto member re-optimizes each parameter at
+  up to 500 points in each direction, which can take minutes on
+  weakly-identified models (observed >5 min on some level-1 benchmark
+  datasets, and one profile alone exceeded 2 min). The whole stage now shares a
+  wall-clock budget set by `EGGP_CI_TIMEOUT` / the Python `ciTimeout` argument:
+  unset = 10 s, `0` = skip CIs, `-1` = unlimited (old behavior), `N` = N s.
+  On timeout the remaining CI cells are left empty; the Pareto CSV shape is
+  unchanged. The command line gained `--no-ci`, and Python gained
+  `computeCI=False` (equivalent to `ciTimeout=0`), to skip the stage
+  entirely. The budget is isolated per `EGGP` instance, so a model's
+  `ciTimeout` does not leak into later runs.
+- **Bound profile-walk restarts** in `getAllProfiles`/`getProfile` (`srtree`):
+  a walk that keeps finding marginally better optima could restart
+  indefinitely; restarts are now capped.
+- **Avoid intermittent GHC crashes with a second Haskell binding**: importing
+  `reggression` after an EGGP run could abort the process (`ARR_WORDS object
+  entered` / SIGSEGV), because GHC supports only one RTS per process and the
+  second `_binding` was `dlopen`'d after the RTS had run. `eggp` now
+  best-effort preloads the sibling package's shared library at import time
+  (`_preload_peer_ffi`), making the Python import order irrelevant.
+- Requires `srtree >= 3.0.0.7` and `srtree-db >= 0.1.3.3`.
+
 ## 2.2.2
 
 - **DB mode resumes the persisted e-graph**: when `--load-from` is not given,

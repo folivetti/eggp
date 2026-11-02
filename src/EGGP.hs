@@ -292,12 +292,15 @@ opt = Args
        <> value 0
        <> showDefault
        <> help "Flush e-graph to DB every N generations (0 = only at end)." )
+  <*> switch
+       ( long "no-ci"
+       <> help "Do not compute profile-likelihood confidence intervals on the final Pareto front." )
 
 eggp_run :: String -> Int -> Int -> Int -> Int -> Double -> Double -> String -> String -> Int -> Int -> Int -> Int -> Int -> Bool -> Bool -> Bool -> String -> String -> String -> Bool -> String -> String -> String -> Int -> Int -> IO String
 eggp_run dataset gens nPop maxSize nTournament pc pm nonterminals loss optIter optRepeat nParams folds maxTime simplify trace generational dumpTo loadFrom varnames useFracBayes dbFile dbFitFile dbDataset dbCacheSz dbFlushEvery =
   case readLoss loss of
        Nothing -> pure $ "Invalid loss function " <> loss
-       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread dbFile dbFitFile dbDataset dbCacheSz dbFlushEvery
+       Just l -> let arg = Args dataset "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread dbFile dbFitFile dbDataset dbCacheSz dbFlushEvery False
                  in eggp arg
 
 eggp :: Args -> IO String
@@ -322,7 +325,7 @@ eggp_run_data dataPtr nrowsPtr ndatasets ncols header params gens nPop maxSize n
        Nothing -> pure $ "Invalid loss function " <> loss
        Just l -> do
          dss <- buildDataSets dataPtr nrowsPtr ndatasets ncols header params
-         let arg = Args "" "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread dbFile dbFitFile dbDataset dbCacheSz dbFlushEvery
+         let arg = Args "" "" gens maxSize folds trace l optIter optRepeat nParams nPop nTournament pc pm nonterminals dumpTo loadFrom generational simplify maxTime varnames useFracBayes MultiThread dbFile dbFitFile dbDataset dbCacheSz dbFlushEvery False
          eggpWithData arg dss dss
 
 -- | Build a list of DataSets from a raw row-major double buffer.  The buffer

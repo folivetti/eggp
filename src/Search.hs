@@ -53,7 +53,9 @@ import Algorithm.EqSat (runEqSat,applySingleMergeOnlyEqSat)
 import Control.Concurrent (getNumCapabilities)
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import System.Timeout (timeout)
+import Text.Read (readMaybe)
 import Data.SRTree (convertProtectedOps)
 
 import Data.SRTree.Random
@@ -65,7 +67,7 @@ import Algorithm.SRTree.AD (ADBackEnd(..))
 import Foreign.C (CInt (..), CDouble (..))
 import Foreign.C.String (CString, newCString, withCString, peekCString, peekCAString, newCAString)
 import Paths_eggp (version)
-import System.Environment (getArgs)
+import System.Environment (getArgs, lookupEnv)
 import System.IO (hPutStrLn, stderr)
 import System.Exit (ExitCode (..))
 import Data.Version (showVersion)
@@ -109,7 +111,8 @@ data Args = Args
     _dbFitFile    :: String,
     _dbDataset    :: String,
     _dbCacheSz    :: Int,
-    _dbFlushEvery :: Int
+    _dbFlushEvery :: Int,
+    _noCI         :: Bool
   }
   deriving (Show)
 
@@ -119,6 +122,30 @@ csvHeader maxParams = "id,view,Expression,Numpy,Math,theta,size,loss_train,loss_
 
 forceSimp :: Fix SRTree -> Fix SRTree
 forceSimp t = let s = simplifyEqSatDefault t in countNodes s `seq` s
+
+-- | Total wall-clock budget (seconds) for computing profile-likelihood
+-- confidence intervals on the final Pareto front.
+--
+-- Profiling a single parameter re-optimizes the other parameters at up to
+-- 500 points in each direction, each a full NLopt run; on weakly-identified
+-- parameters this takes minutes per parameter and can make eggp look hung.
+-- The budget bounds the whole final CI stage:
+--
+--   * unset        -> 10 seconds
+--   * @EGGP_CI_TIMEOUT=0@   -> skip CIs entirely (columns left empty)
+--   * @EGGP_CI_TIMEOUT=-1@  -> no budget (old, potentially very slow behavior)
+--   * @EGGP_CI_TIMEOUT=Ns@  -> N seconds
+ciBudgetSeconds :: IO (Maybe Double)
+ciBudgetSeconds = do
+  mv <- lookupEnv "EGGP_CI_TIMEOUT"
+  pure $ case mv of
+    Nothing -> Just defaultCIBudget
+    Just s  -> case readMaybe s of
+      Just (-1) -> Nothing
+      Just n    -> Just (max 0 n)
+      Nothing   -> Just defaultCIBudget
+  where
+    defaultCIBudget = 10
 
 egraphGP :: [(DataSet, DataSet)] -> [DataSet] -> Args -> StateT EGraph (StateT StdGen IO) String
 egraphGP dataTrainVals dataTests args = do
@@ -152,12 +179,16 @@ egraphGP dataTrainVals dataTests args = do
   fitBatchCached fitCache True fitFun unevalInit
 
   t0 <- io $ getPOSIXTime
+  ciBudget <- io $ newIORef $ if _noCI args then Just 0 else Nothing
+  when (not (_noCI args)) $ do
+    budget <- io ciBudgetSeconds
+    io $ writeIORef ciBudget budget
   
   pop <- replicateM (_nPop args) $ insertRndExpr (_maxSize args) rndTerm rndNonTerm >>= canonical
   fitBatchCached fitCache False fitFun pop
 
   output <- if _trace args 
-               then forM (Prelude.zip [0..] pop) $ uncurry (printExpr False nFeats)
+               then forM (Prelude.zip [0..] pop) $ uncurry (printExpr False nFeats ciBudget)
                else pure []
 
   let m = (_nPop args) `div` (_maxSize args)
@@ -199,7 +230,7 @@ egraphGP dataTrainVals dataTests args = do
           Nothing -> pure ()
 
     out' <- if _trace args
-              then forM (Prelude.zip [curIx..] newPop') $ uncurry (printExpr False nFeats)
+              then forM (Prelude.zip [curIx..] newPop') $ uncurry (printExpr False nFeats ciBudget)
               else pure []
 
     totSz <- gets (HashMap.size . _eNodeToEClass)
@@ -239,7 +270,7 @@ egraphGP dataTrainVals dataTests args = do
   actualMaxP <- if _nParams args == -1
                   then computeMaxP (_maxSize args) (_distribution args) nFeats
                   else pure (_nParams args)
-  let printExpr' = printExpr True actualMaxP
+  let printExpr' = printExpr True actualMaxP ciBudget
   pf <- if _trace args 
            then pure finalOut 
            else paretoFront fitFun (_maxSize args) printExpr'
@@ -572,8 +603,8 @@ egraphGP dataTrainVals dataTests args = do
             pure $ naryTree op exprs
 
 
-    printExpr :: Bool -> Int -> Int -> EClassId -> RndEGraph [String]
-    printExpr withCI actualMaxP ix ec = do
+    printExpr :: Bool -> Int -> IORef (Maybe Double) -> Int -> EClassId -> RndEGraph [String]
+    printExpr withCI actualMaxP ciBudget ix ec = do
         thetas' <- getTheta ec
         bestExpr0 <- getBestExpr ec
         bestExpr <- if _simplify args
@@ -659,7 +690,20 @@ egraphGP dataTrainVals dataTests args = do
               then do
                 -- profile-likelihood CIs (expensive: an NLopt walk per parameter);
                 -- only computed for the final Pareto front, not per-generation trace.
-                profiles <- liftIO $ getAllProfiles Bates et theta (_stdErr stats) [] 0.05
+                -- The whole stage shares a wall-clock budget: weakly-identified
+                -- parameters can otherwise take minutes each and look like a hang.
+                remaining <- io $ readIORef ciBudget
+                (profiles, spent) <- case remaining of
+                  Just budget | budget <= 0 -> pure ([], 0)
+                  mBudget -> do
+                    tStart <- io getPOSIXTime
+                    let runAll = getAllProfiles Bates et theta (_stdErr stats) [] 0.05
+                    res <- case mBudget of
+                             Nothing     -> Just <$> io runAll
+                             Just budget -> io $ timeout (max 1 (round (budget * 1000000))) runAll
+                    tEnd <- io getPOSIXTime
+                    pure (fromMaybe [] res, realToFrac (tEnd - tStart))
+                io $ modifyIORef' ciBudget (fmap (\b -> max 0 (b - spent)))
                 let ciVals = paramCI (Profile stats profiles) nSamples theta 0.05
                     maxPExpr = actualMaxP
                     ciStr = intercalate ","

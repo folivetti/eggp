@@ -27,6 +27,10 @@ _has_n = any(tok == "-N" or (tok.startswith("-N") and tok[2:].isdigit())
 if not _has_n:
     os.environ["GHCRTS"] = (_ghcrts + " -N4").strip()
 
+# Default CI budget, captured so per-model `ciTimeout` values do not leak into
+# later EGGP instances (and so an externally set EGGP_CI_TIMEOUT is preserved).
+_EGGP_CI_TIMEOUT_ENV = os.environ.get("EGGP_CI_TIMEOUT")
+
 from ._binding import (
     unsafe_hs_eggp_version,
     unsafe_hs_eggp_main,
@@ -84,7 +88,7 @@ def _preload_peer_ffi(pkg_name: str) -> None:
 
 _preload_peer_ffi("reggression")
 
-VERSION: str = "2.2.2"
+VERSION: str = "2.2.3"
 
 
 _hs_rts_init: bool = False
@@ -277,7 +281,7 @@ class EGGP(BaseEstimator, RegressorMixin):
     >>> estimator = EGGP(loss="Bernoulli")
     >>> estimator.fit(X, y)
     """
-    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = "", useFracBayes = False, pinball_tau = 0.5, dbFile = "", dbFitFile = "", dbDataset = "", dbCacheSize = 100000, dbFlushEvery = 0):
+    def __init__(self, gen = 100, nPop = 100, maxSize = 15, nTournament = 3, pc = 0.9, pm = 0.3, nonterminals = "add,sub,mul,div", loss = "MSE", optIter = 50, optRepeat = 2, nParams = -1, folds = 1, max_time = -1, simplify = False, trace = False, generational = False, dumpTo = "", loadFrom = "", useFracBayes = False, pinball_tau = 0.5, dbFile = "", dbFitFile = "", dbDataset = "", dbCacheSize = 100000, dbFlushEvery = 0, ciTimeout = None, computeCI = True):
         nts = "add,sub,mul,div,power,powerabs,\
                aq,abs,sin,cos,tan,sinh,cosh,tanh,\
                asin,acos,atan,asinh,acosh,atanh,sqrt,\
@@ -319,6 +323,10 @@ class EGGP(BaseEstimator, RegressorMixin):
             raise TypeError('useFracBayes must be a boolean')
         if pinball_tau <= 0 or pinball_tau >= 1:
             raise ValueError('pinball_tau must be a value between 0 and 1')
+        if ciTimeout is not None and (not isinstance(ciTimeout, int) or ciTimeout < -1):
+            raise ValueError('ciTimeout must be None, -1 (unlimited) or a non-negative number of seconds')
+        if not isinstance(computeCI, bool):
+            raise TypeError('computeCI must be a boolean')
         self.gen = gen
         self.nPop = nPop
         self.maxSize = maxSize
@@ -345,6 +353,26 @@ class EGGP(BaseEstimator, RegressorMixin):
         self.dbDataset = dbDataset
         self.dbCacheSize = dbCacheSize
         self.dbFlushEvery = dbFlushEvery
+        self.ciTimeout = ciTimeout
+        self.computeCI = computeCI
+
+    def _apply_ci_timeout(self):
+        """Forward the CI budget to the Haskell runtime.
+
+        Computing profile-likelihood confidence intervals on the final Pareto
+        front re-optimizes the model at hundreds of points per parameter and
+        can take minutes for weakly-identified models.  ``ciTimeout`` bounds
+        that stage: 0 skips CIs (columns left empty), -1 disables the bound,
+        and a positive value is the total budget in seconds.
+        """
+        if not self.computeCI:
+            os.environ["EGGP_CI_TIMEOUT"] = "0"
+        elif self.ciTimeout is not None:
+            os.environ["EGGP_CI_TIMEOUT"] = str(self.ciTimeout)
+        elif _EGGP_CI_TIMEOUT_ENV is not None:
+            os.environ["EGGP_CI_TIMEOUT"] = _EGGP_CI_TIMEOUT_ENV
+        else:
+            os.environ.pop("EGGP_CI_TIMEOUT", None)
 
     @property
     def loss_arg(self):
@@ -434,6 +462,7 @@ class EGGP(BaseEstimator, RegressorMixin):
 
         dname = self.get_fname("", header)
 
+        self._apply_ci_timeout()
         csv_data = eggp_run_data(combined, [combined.shape[0]], ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm, self.nonterminals, self.loss_arg, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes, self.dbFile, self.dbFitFile, self.dbDataset, self.dbCacheSize, self.dbFlushEvery)
 
         if len(csv_data) > 0:
@@ -468,6 +497,7 @@ class EGGP(BaseEstimator, RegressorMixin):
         nrows = [combined.shape[0] for combined in combineds]
         dname = self.get_fname("", header)
 
+        self._apply_ci_timeout()
         csv_data = eggp_run_data(data, nrows, ",".join(header), dname, self.gen, self.nPop, self.maxSize, self.nTournament, self.pc, self.pm,
                             self.nonterminals, self.loss_arg, self.optIter, self.optRepeat, self.nParams, self.folds, self.max_time, self.simplify, self.trace, self.generational, self.dumpTo, self.loadFrom, varnames, self.useFracBayes, self.dbFile, self.dbFitFile, self.dbDataset, self.dbCacheSize, self.dbFlushEvery)
 

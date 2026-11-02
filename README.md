@@ -79,8 +79,17 @@ Available options:
                            (default: 100000)
   --db-flush-every ARG     Flush e-graph to DB every N generations (0 = only at
                            end). (default: 0)
+  --no-ci                  Do not compute profile-likelihood confidence
+                           intervals on the final Pareto front.
   -h,--help                Show this help text
 ```
+
+The final Pareto front includes profile-likelihood confidence intervals. They
+are expensive (each parameter is profiled with many NLopt re-optimizations), so
+the whole stage has a wall-clock budget controlled by the `EGGP_CI_TIMEOUT`
+environment variable: unset = 10 seconds, `0` = skip CIs (columns left empty),
+`-1` = unlimited (old behavior), `N` = `N` seconds. Python users can set the
+same budget with the `ciTimeout` constructor argument.
 
 #### Option groups
 
@@ -381,6 +390,8 @@ also accepts `eggp +RTS -N8 -RTS ...`.
 | `dbDataset` | str | "" | Dataset key inside the DB (empty = basename of the data source) |
 | `dbCacheSize` | int | 100000 | Size hint for the local fitness cache |
 | `dbFlushEvery` | int | 0 | Sync the e-graph every N generations (`0` = only at the end) |
+| `ciTimeout` | int/None | None | Wall-clock budget (seconds) for the final profile-likelihood CIs: `0` skips them, `-1` is unlimited, `None` uses `EGGP_CI_TIMEOUT` (default 10 s) |
+| `computeCI` | bool | True | Set to `False` to skip profile-likelihood CIs entirely (same as `ciTimeout=0`) |
 
 For resumable DB-backed runs pass both `dbFile` and `dbFitFile` (the e-graph
 and the frequently-written fit cache live in separate SQLite files):
